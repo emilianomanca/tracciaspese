@@ -2,7 +2,7 @@
   "name": "Scontrino — Rendiconto spese",
   "short_name": "Scontrino",
   "description": "Registro spese per amministrazione di sostegno",
-  "start_url": "./index-drive.html",
+  "start_url": "./scontrino-app-drive.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
