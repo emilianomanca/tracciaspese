@@ -136,6 +136,9 @@
     <h1>Scontrino</h1>
     <p id="gate-text">I tuoi dati vengono salvati in una cartella "Scontrino App" nel tuo Google Drive, così puoi accedervi da qualunque dispositivo.</p>
 
+    <div id="iframe-warning" style="display:none; background:var(--stamp-soft); color:var(--stamp); padding:10px 12px; border-radius:2px; font-family:var(--font-mono); font-size:11px; margin-bottom:16px; text-align:left; line-height:1.5;">
+      ⚠️ Questa pagina è aperta dentro un'anteprima integrata: l'accesso a Google non funzionerà qui. Apri il link diretto del file nel browser (Chrome/Safari) a schermo intero.
+    </div>
     <div id="gate-need-config">
       <label style="text-align:left;">Google Client ID</label>
       <input type="text" id="client-id-input" placeholder="xxxxx.apps.googleusercontent.com">
@@ -273,17 +276,33 @@ function setSync(mode){ // 'ok' | 'busy' | 'err'
 }
 
 // ---------- Local prefs (fine to use localStorage: this is a standalone page, not a Claude artifact) ----------
-function getClientId(){ return localStorage.getItem('scontrino_client_id') || ''; }
-function setClientId(id){ localStorage.setItem('scontrino_client_id', id); }
-function getLastProfile(){ return localStorage.getItem('scontrino_last_profile') || ''; }
-function setLastProfile(name){ localStorage.setItem('scontrino_last_profile', name); }
+let memFallback = {};
+function lsGet(key){
+  try{ return localStorage.getItem(key); }catch(e){ return memFallback[key] || null; }
+}
+function lsSet(key, val){
+  try{ localStorage.setItem(key, val); }catch(e){ memFallback[key] = val; }
+}
+function getClientId(){ return lsGet('scontrino_client_id') || ''; }
+function setClientId(id){ lsSet('scontrino_client_id', id); }
+function getLastProfile(){ return lsGet('scontrino_last_profile') || ''; }
+function setLastProfile(name){ lsSet('scontrino_last_profile', name); }
 
 // ---------- Google sign-in ----------
 document.getElementById('btn-save-client-id').addEventListener('click', ()=>{
-  const id = document.getElementById('client-id-input').value.trim();
-  if(!id){ toast('Incolla un Client ID valido'); return; }
-  setClientId(id);
-  showGateReady();
+  try{
+    const id = document.getElementById('client-id-input').value.trim();
+    if(!id){ toast('Incolla un Client ID valido'); return; }
+    if(window.self !== window.top){
+      toast("Apri questo file dal suo link diretto (non da un'anteprima integrata) per continuare");
+      return;
+    }
+    setClientId(id);
+    showGateReady();
+    initGis();
+  }catch(err){
+    toast('Errore: ' + err.message);
+  }
 });
 document.getElementById('btn-change-client-id').addEventListener('click', ()=>{
   document.getElementById('gate-need-config').style.display = 'block';
@@ -314,6 +333,10 @@ function initGis(){
 }
 
 document.getElementById('btn-google-signin').addEventListener('click', ()=>{
+  if(window.self !== window.top){
+    toast("Apri il link diretto del file, non l'anteprima integrata");
+    return;
+  }
   if(!state.tokenClient) initGis();
   state.tokenClient.requestAccessToken({prompt:'consent'});
 });
@@ -675,7 +698,7 @@ function getRangeForPeriod(){
   }
   if(state.reportPeriod === 'year'){
     const from = new Date(today.getFullYear(),0,1); const to = new Date(today.getFullYear(),11,31);
-    return {from:toISO(from), to:toISO(to), label:'Spese dell\\'anno '+today.getFullYear()};
+    return {from:toISO(from), to:toISO(to), label:"Spese dell'anno "+today.getFullYear()};
   }
   const from = document.getElementById('r-from').value;
   const to = document.getElementById('r-to').value;
@@ -784,6 +807,9 @@ document.getElementById('btn-excel').addEventListener('click', ()=>{
 
 // ---------- Init ----------
 (function init(){
+  if(window.self !== window.top){
+    document.getElementById('iframe-warning').style.display = 'block';
+  }
   const id = getClientId();
   if(id){
     document.getElementById('client-id-input').value = id;
