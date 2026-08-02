@@ -24,7 +24,7 @@
 
   header.top{padding:22px 16px 14px; text-align:center; border-bottom:1px dashed var(--rule); background:var(--paper); position:sticky; top:0; z-index:20;}
   header.top h1{font-family:var(--font-display); font-size:26px; letter-spacing:0.5px; margin:0; font-style:italic;}
-  header.top .tagline{font-family:var(--font-mono); font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--ink-soft); margin-top:4px;}
+  header.top .tagline{font-family:var(--font-mono); font-size:10px; letter-spacing:0.5px; text-transform:uppercase; color:var(--ink-soft); margin-top:4px;}
   .profile-switch{margin-top:10px; display:inline-flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:12px; color:var(--ink-soft); border:1px solid var(--rule); border-radius:20px; padding:5px 12px; cursor:pointer; background:var(--paper-2);}
   .profile-switch b{color:var(--ink);}
   .sync-dot{width:7px; height:7px; border-radius:50%; background:var(--ok); display:inline-block; margin-right:3px;}
@@ -134,11 +134,15 @@
 <div id="gate-screen">
   <div class="gate-box">
     <h1>Scontrino</h1>
-    <p id="gate-text">I tuoi dati vengono salvati in una cartella "Scontrino App" nel tuo Google Drive, così puoi accedervi da qualunque dispositivo.</p>
+    <p id="gate-text">Registro spese del beneficiario, salvato in una cartella "Scontrino App" nel tuo Google Drive: accessibile da qualunque dispositivo, utile per la rendicontazione.</p>
 
     <div id="iframe-warning" style="display:none; background:var(--stamp-soft); color:var(--stamp); padding:10px 12px; border-radius:2px; font-family:var(--font-mono); font-size:11px; margin-bottom:16px; text-align:left; line-height:1.5;">
       ⚠️ Questa pagina è aperta dentro un'anteprima integrata: l'accesso a Google non funzionerà qui. Apri il link diretto del file nel browser (Chrome/Safari) a schermo intero.
     </div>
+    <div id="gate-autologin-msg" style="display:none; font-family:var(--font-mono); font-size:12px; color:var(--ink-soft); margin-bottom:10px;">
+      Accesso in corso...
+    </div>
+
     <div id="gate-need-config">
       <label style="text-align:left;">Google Client ID</label>
       <input type="text" id="client-id-input" placeholder="xxxxx.apps.googleusercontent.com">
@@ -169,7 +173,7 @@
 
 <header class="top">
   <h1>Scontrino</h1>
-  <div class="tagline">registro spese personali</div>
+  <div class="tagline">rendiconto spese — amministrazione di sostegno</div>
   <div class="profile-switch" id="profile-switch"><span class="sync-dot" id="sync-dot"></span>👤 <b id="profile-switch-name">—</b> · cambia</div>
 </header>
 
@@ -201,7 +205,7 @@
 
   <div class="view" id="view-report">
     <div class="card">
-      <h2>Estrai report</h2>
+      <h2>Filtra le spese</h2>
       <div class="period-pills">
         <button data-period="day" class="active">Oggi</button>
         <button data-period="month">Mese</button>
@@ -212,6 +216,10 @@
         <div><label>Dal</label><input type="date" id="r-from"></div>
         <div><label>Al</label><input type="date" id="r-to"></div>
       </div>
+      <label>Categoria</label>
+      <select id="r-category">
+        <option value="">Tutte le categorie</option>
+      </select>
       <div class="btn-row"><button class="btn secondary" id="btn-anteprima">Anteprima</button></div>
     </div>
 
@@ -225,6 +233,8 @@
         <button class="btn secondary" id="btn-pdf">PDF</button>
       </div>
       <button class="btn stamp" id="btn-excel">⬇ Esporta Excel</button>
+      <button class="btn secondary" id="btn-receipts-pdf">🧾 Stampa scontrini/ricevute (PDF)</button>
+      <div class="helptext" id="receipts-progress" style="display:none;"></div>
     </div>
   </div>
 
@@ -233,7 +243,7 @@
 <nav class="tabs">
   <button data-view="nuova" class="active"><span class="icon">＋</span>Nuova</button>
   <button data-view="spese"><span class="icon">≡</span>Spese</button>
-  <button data-view="report"><span class="icon">▤</span>Report</button>
+  <button data-view="report"><span class="icon">▤</span>Stampe</button>
 </nav>
 
 <div id="toast"></div>
@@ -251,7 +261,7 @@
 (function(){
 
 const SCOPES = "https://www.googleapis.com/auth/drive.file";
-const CATEGORIES = ["Alimentari","Trasporti","Casa","Salute","Svago","Ristoranti","Bollette","Abbigliamento","Regali","Altro"];
+const CATEGORIES = ["Alimentari","Carburante","Casa","Salute","Bollette","Abbigliamento","Tasse","Altro"];
 
 let state = {
   expenses: [], currentPhotoBlob: null, selectedCategory: null,
@@ -322,7 +332,15 @@ function initGis(){
     client_id: id,
     scope: SCOPES,
     callback: async (resp)=>{
-      if(resp.error){ toast('Accesso non riuscito'); return; }
+      if(resp.error){
+        // Il tentativo silenzioso può fallire (es. sessione Google scaduta): richiediamo un accesso esplicito
+        if(document.getElementById('gate-ready').style.display !== 'none') return;
+        document.getElementById('gate-screen').classList.remove('hidden');
+        showGateReady();
+        document.getElementById('gate-autologin-msg').style.display = 'none';
+        return;
+      }
+      lsSet('scontrino_granted', '1');
       state.accessToken = resp.access_token;
       document.getElementById('gate-screen').classList.add('hidden');
       setSync('busy');
@@ -338,14 +356,17 @@ document.getElementById('btn-google-signin').addEventListener('click', ()=>{
     return;
   }
   if(!state.tokenClient) initGis();
-  state.tokenClient.requestAccessToken({prompt:'consent'});
+  const alreadyGranted = lsGet('scontrino_granted') === '1';
+  state.tokenClient.requestAccessToken({prompt: alreadyGranted ? '' : 'consent'});
 });
 document.getElementById('btn-signout').addEventListener('click', ()=>{
   if(state.accessToken){ google.accounts.oauth2.revoke(state.accessToken, ()=>{}); }
   state.accessToken = null;
+  lsSet('scontrino_granted', '');
   localStorage.removeItem('scontrino_last_profile');
   document.getElementById('profile-screen').classList.add('hidden');
   document.getElementById('gate-screen').classList.remove('hidden');
+  showGateReady();
 });
 
 // ---------- Drive REST helpers ----------
@@ -535,6 +556,16 @@ function renderCategoryChips(){
 }
 renderCategoryChips();
 
+function renderReportCategorySelect(){
+  const sel = document.getElementById('r-category');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Tutte le categorie</option>' +
+    CATEGORIES.map(c=>`<option value="${c}">${c}</option>`).join('') +
+    '<option value="__none__">Senza categoria</option>';
+  sel.value = current || '';
+}
+renderReportCategorySelect();
+
 // ---------- Photo picker ----------
 document.getElementById('photo-picker-area').addEventListener('click', ()=> document.getElementById('f-photo').click());
 document.getElementById('f-photo').addEventListener('change', (e)=>{
@@ -708,10 +739,18 @@ function getRangeForPeriod(){
 document.getElementById('btn-anteprima').addEventListener('click', ()=>{
   const range = getRangeForPeriod();
   if(!range.from || !range.to){ toast('Seleziona entrambe le date'); return; }
-  const filtered = state.expenses.filter(e=> e.date >= range.from && e.date <= range.to).sort((a,b)=> a.date.localeCompare(b.date));
-  state.reportData = {...range, items: filtered};
+  const catFilter = document.getElementById('r-category').value;
+  let filtered = state.expenses.filter(e=> e.date >= range.from && e.date <= range.to);
+  if(catFilter === '__none__'){
+    filtered = filtered.filter(e=> !e.category);
+  } else if(catFilter){
+    filtered = filtered.filter(e=> e.category === catFilter);
+  }
+  filtered.sort((a,b)=> a.date.localeCompare(b.date));
+  const catLabel = catFilter === '__none__' ? ' · senza categoria' : catFilter ? ' · '+catFilter : '';
+  state.reportData = {...range, label: range.label + catLabel, items: filtered};
 
-  document.getElementById('report-title').textContent = range.label;
+  document.getElementById('report-title').textContent = state.reportData.label;
   const total = filtered.reduce((s,e)=>s+e.amount,0);
   document.getElementById('report-total').textContent = fmtEUR(total);
 
@@ -805,6 +844,111 @@ document.getElementById('btn-excel').addEventListener('click', ()=>{
   toast('Excel scaricato');
 });
 
+// ---------- Receipts / giustificativi PDF ----------
+function loadImageDims(dataUrl){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    img.onload = ()=> resolve({w: img.naturalWidth, h: img.naturalHeight});
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
+document.getElementById('btn-receipts-pdf').addEventListener('click', async ()=>{
+  if(!state.reportData) return;
+  const { items, label } = state.reportData;
+  if(items.length === 0){ toast('Nessuna spesa nel periodo selezionato'); return; }
+
+  const btn = document.getElementById('btn-receipts-pdf');
+  const progress = document.getElementById('receipts-progress');
+  btn.disabled = true;
+  progress.style.display = 'block';
+
+  try{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:'mm', format:'a4'});
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const margin = 14;
+
+    // Copertina: elenco riepilogativo, utile come indice dei giustificativi
+    doc.setFont('times','italic'); doc.setFontSize(18);
+    doc.text('Giustificativi di spesa', margin, 18);
+    doc.setFont('helvetica','normal'); doc.setFontSize(11);
+    doc.text(label + ' — profilo: ' + state.profile, margin, 26);
+    const total = items.reduce((s,e)=>s+e.amount,0);
+    const withPhoto = items.filter(e=>e.photoFileId).length;
+    doc.setFontSize(9);
+    doc.text(`${items.length} spese registrate, totale ${fmtEUR(total)}. Scontrini/ricevute allegati: ${withPhoto} di ${items.length}.`, margin, 33);
+
+    const body = items.map((e,i)=>[String(i+1), fmtDateIt(e.date), e.desc, e.category||'—', fmtEUR(e.amount), e.photoFileId ? 'Sì' : 'No']);
+    doc.autoTable({
+      startY: 40,
+      head: [['#','Data','Descrizione','Categoria','Importo','Allegato']],
+      body,
+      styles:{fontSize:8},
+      headStyles:{fillColor:[32,38,31]},
+      columnStyles:{4:{halign:'right'}, 0:{cellWidth:8}}
+    });
+
+    // Una pagina per ogni scontrino/ricevuta disponibile
+    const withoutPhoto = [];
+    let done = 0;
+    for(const e of items){
+      done++;
+      progress.textContent = `Preparazione allegato ${done} di ${items.length}...`;
+      if(!e.photoFileId){ withoutPhoto.push(e); continue; }
+      let dataUrl;
+      try{
+        dataUrl = await driveGetPhotoDataUrl(e.photoFileId);
+      }catch(err){
+        withoutPhoto.push(e);
+        continue;
+      }
+      let dims;
+      try{ dims = await loadImageDims(dataUrl); }catch(err){ dims = {w:1000,h:1400}; }
+
+      doc.addPage();
+      doc.setFont('helvetica','bold'); doc.setFontSize(11);
+      doc.text(`${fmtDateIt(e.date)} — ${e.desc}`, margin, 15);
+      doc.setFont('helvetica','normal'); doc.setFontSize(10);
+      doc.text(`${e.category || 'Senza categoria'} · ${fmtEUR(e.amount)}`, margin, 21);
+      doc.setDrawColor(210,210,200);
+      doc.line(margin, 24, pageW-margin, 24);
+
+      const availW = pageW - margin*2;
+      const availH = pageH - 30 - margin;
+      const ratio = Math.min(availW/dims.w, availH/dims.h);
+      const drawW = dims.w*ratio, drawH = dims.h*ratio;
+      const x = (pageW - drawW)/2;
+      const y = 30;
+      doc.addImage(dataUrl, 'JPEG', x, y, drawW, drawH);
+    }
+
+    if(withoutPhoto.length){
+      doc.addPage();
+      doc.setFont('times','italic'); doc.setFontSize(14);
+      doc.text('Spese senza scontrino allegato', margin, 18);
+      doc.autoTable({
+        startY: 26,
+        head:[['Data','Descrizione','Categoria','Importo']],
+        body: withoutPhoto.map(e=>[fmtDateIt(e.date), e.desc, e.category||'—', fmtEUR(e.amount)]),
+        styles:{fontSize:9},
+        headStyles:{fillColor:[177,67,40]},
+        columnStyles:{3:{halign:'right'}}
+      });
+    }
+
+    doc.save('giustificativi_' + state.reportData.from + '_' + state.reportData.to + '.pdf');
+    toast('PDF giustificativi pronto');
+  }catch(err){
+    toast('Errore nella creazione del PDF');
+  }finally{
+    btn.disabled = false;
+    progress.style.display = 'none';
+  }
+});
+
 // ---------- Init ----------
 (function init(){
   if(window.self !== window.top){
@@ -815,6 +959,15 @@ document.getElementById('btn-excel').addEventListener('click', ()=>{
     document.getElementById('client-id-input').value = id;
     showGateReady();
     initGis();
+    if(lsGet('scontrino_granted') === '1' && window.self === window.top){
+      document.getElementById('gate-autologin-msg').style.display = 'block';
+      document.getElementById('gate-ready').style.display = 'none';
+      // piccolo ritardo per essere certi che lo script di Google si sia caricato
+      setTimeout(()=>{
+        try{ state.tokenClient.requestAccessToken({prompt:''}); }
+        catch(e){ document.getElementById('gate-autologin-msg').style.display = 'none'; document.getElementById('gate-ready').style.display = 'block'; }
+      }, 300);
+    }
   }
 })();
 
