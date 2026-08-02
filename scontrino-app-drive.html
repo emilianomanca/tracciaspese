@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Scontrino — Le tue spese</title>
+<meta name="theme-color" content="#F7F4EC">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --paper:#F7F4EC; --paper-2:#EFEADC; --ink:#20261F; --ink-soft:#5B6158;
+    --rule:#D8D2C0; --stamp:#B14328; --stamp-soft:#E8DCD5; --ok:#3C6E47; --ok-soft:#DCE8DD;
+    --font-display: 'Georgia', 'Times New Roman', serif;
+    --font-mono: 'Courier New', Courier, monospace;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; background:var(--paper); color:var(--ink); font-family:var(--font-body); min-height:100%;}
+  body{padding-bottom:84px; background-image:radial-gradient(circle at 1px 1px, rgba(0,0,0,0.05) 1px, transparent 0); background-size:14px 14px;}
+  .container{max-width:520px; margin:0 auto; padding:0 16px;}
+
+  header.top{padding:22px 16px 14px; text-align:center; border-bottom:1px dashed var(--rule); background:var(--paper); position:sticky; top:0; z-index:20;}
+  header.top h1{font-family:var(--font-display); font-size:26px; letter-spacing:0.5px; margin:0; font-style:italic;}
+  header.top .tagline{font-family:var(--font-mono); font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--ink-soft); margin-top:4px;}
+  .profile-switch{margin-top:10px; display:inline-flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:12px; color:var(--ink-soft); border:1px solid var(--rule); border-radius:20px; padding:5px 12px; cursor:pointer; background:var(--paper-2);}
+  .profile-switch b{color:var(--ink);}
+  .sync-dot{width:7px; height:7px; border-radius:50%; background:var(--ok); display:inline-block; margin-right:3px;}
+  .sync-dot.busy{background:#C9A227; animation:pulse 1s infinite;}
+  .sync-dot.err{background:var(--stamp);}
+  @keyframes pulse{0%,100%{opacity:1;} 50%{opacity:0.3;}}
+
+  #gate-screen, #profile-screen{position:fixed; inset:0; background:var(--paper); z-index:100; display:flex; align-items:center; justify-content:center; padding:24px;}
+  #gate-screen.hidden, #profile-screen.hidden{display:none;}
+  .gate-box, .profile-box{max-width:380px; width:100%; text-align:center;}
+  .gate-box h1, .profile-box h1{font-family:var(--font-display); font-style:italic; font-size:30px; margin-bottom:6px;}
+  .gate-box p, .profile-box p{font-family:var(--font-mono); font-size:12px; color:var(--ink-soft); margin-bottom:24px; line-height:1.6;}
+  .profile-list{display:flex; flex-direction:column; gap:10px; margin-bottom:20px;}
+  .profile-item{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 16px; border:1px solid var(--rule); border-radius:2px; background:#fff; cursor:pointer;}
+  .profile-item .name{font-size:16px; font-weight:600; text-align:left;}
+  .profile-item .arrow{color:var(--stamp); font-family:var(--font-mono);}
+  .profile-new{display:flex; gap:8px;}
+  .profile-new input{flex:1;}
+  .gear-link{display:block; margin-top:18px; font-family:var(--font-mono); font-size:11px; color:var(--ink-soft); text-decoration:underline; cursor:pointer;}
+
+  .card{background:#fff; border:1px solid var(--rule); border-radius:2px; padding:16px; margin-bottom:14px; box-shadow:0 1px 0 rgba(0,0,0,0.03); text-align:left;}
+  .card h2{font-family:var(--font-display); font-style:italic; font-size:18px; margin:0 0 14px; border-bottom:1px dashed var(--rule); padding-bottom:8px;}
+
+  nav.tabs{position:fixed; bottom:0; left:0; right:0; background:var(--paper); border-top:1px solid var(--rule); display:flex; z-index:30; padding-bottom:env(safe-area-inset-bottom);}
+  nav.tabs button{flex:1; background:none; border:none; padding:12px 4px 10px; font-family:var(--font-mono); font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-soft); cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;}
+  nav.tabs button .icon{font-size:19px;}
+  nav.tabs button.active{color:var(--stamp); font-weight:700;}
+  .view{display:none; padding:18px 0 20px;}
+  .view.active{display:block;}
+
+  label{display:block; font-family:var(--font-mono); font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--ink-soft); margin-bottom:5px; margin-top:14px;}
+  label:first-of-type{margin-top:0;}
+  input[type=text], input[type=number], input[type=date], input[type=password], select, textarea{width:100%; padding:10px 10px; border:1px solid var(--rule); border-radius:2px; font-size:16px; font-family:var(--font-body); background:var(--paper); color:var(--ink);}
+  input[type=number]{font-family:var(--font-mono);}
+  textarea{resize:vertical; min-height:44px;}
+  .amount-row{display:flex; align-items:center; gap:8px;}
+  .amount-row span{font-family:var(--font-mono); font-size:18px; color:var(--ink-soft);}
+
+  .btn{display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:13px 18px; border-radius:2px; border:1px solid var(--ink); font-family:var(--font-mono); font-size:13px; letter-spacing:1px; text-transform:uppercase; background:var(--ink); color:var(--paper); cursor:pointer; width:100%; margin-top:18px;}
+  .btn.secondary{background:var(--paper); color:var(--ink);}
+  .btn.stamp{background:var(--stamp); border-color:var(--stamp); color:#fff;}
+  .btn.google{background:#fff; color:#3c4043; border-color:#dadce0;}
+  .btn.small{width:auto; padding:9px 14px; margin-top:0; font-size:11px;}
+  .btn:active{opacity:0.75;}
+  .btn:disabled{opacity:0.5;}
+  .btn-row{display:flex; gap:10px;}
+  .btn-row .btn{margin-top:10px;}
+
+  .photo-picker{border:1px dashed var(--rule); border-radius:2px; padding:14px; text-align:center; color:var(--ink-soft); font-family:var(--font-mono); font-size:12px; cursor:pointer; background:var(--paper-2);}
+  .photo-preview{width:100%; max-height:220px; object-fit:contain; display:block; margin-top:10px; border:1px solid var(--rule);}
+  .photo-actions{display:flex; gap:8px; margin-top:8px;}
+
+  .chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;}
+  .chip{padding:6px 12px; border:1px solid var(--rule); border-radius:20px; font-size:12px; font-family:var(--font-mono); background:var(--paper); cursor:pointer; color:var(--ink-soft);}
+  .chip.selected{background:var(--ink); color:var(--paper); border-color:var(--ink);}
+
+  #toast{position:fixed; bottom:96px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--ink); color:var(--paper); padding:10px 18px; border-radius:20px; font-family:var(--font-mono); font-size:12px; opacity:0; pointer-events:none; transition:all .25s ease; z-index:150; white-space:nowrap;}
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  .receipt{background:#fff; border:1px solid var(--rule); position:relative; padding:6px 0; margin-bottom:16px;}
+  .receipt::before, .receipt::after{content:""; position:absolute; left:0; right:0; height:9px; background-image: radial-gradient(circle at 50% 100%, transparent 5px, #fff 5.5px); background-size:16px 16px; background-repeat:repeat-x;}
+  .receipt::before{top:-8px;}
+  .receipt::after{bottom:-8px; transform:rotate(180deg);}
+  .exp-row{display:flex; justify-content:space-between; align-items:center; gap:10px; padding:11px 16px; border-bottom:1px dashed var(--rule);}
+  .exp-row:last-child{border-bottom:none;}
+  .exp-main{flex:1; min-width:0;}
+  .exp-desc{font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .exp-meta{font-family:var(--font-mono); font-size:11px; color:var(--ink-soft); margin-top:2px;}
+  .exp-meta .cat{background:var(--stamp-soft); color:var(--stamp); padding:1px 6px; border-radius:8px; margin-right:6px;}
+  .exp-amount{font-family:var(--font-mono); font-size:15px; font-weight:700; white-space:nowrap;}
+  .exp-camera{font-size:13px; margin-left:6px; opacity:0.6;}
+  .empty{text-align:center; padding:40px 20px; color:var(--ink-soft); font-family:var(--font-mono); font-size:12px;}
+  .day-header{font-family:var(--font-mono); font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--ink-soft); margin:18px 0 6px 4px; display:flex; justify-content:space-between;}
+
+  .period-pills{display:flex; gap:6px; margin-bottom:14px;}
+  .period-pills button{flex:1; padding:9px 4px; border:1px solid var(--rule); background:var(--paper); font-family:var(--font-mono); font-size:11px; text-transform:uppercase; border-radius:2px; cursor:pointer; color:var(--ink-soft);}
+  .period-pills button.active{background:var(--ink); color:var(--paper); border-color:var(--ink);}
+  .custom-dates{display:none; gap:10px;}
+  .custom-dates.show{display:flex;}
+  .custom-dates > div{flex:1;}
+
+  .total-line{display:flex; justify-content:space-between; align-items:baseline; padding:16px; border-top:2px solid var(--ink); margin-top:4px;}
+  .total-line .label{font-family:var(--font-mono); font-size:12px; text-transform:uppercase; letter-spacing:1px;}
+  .total-line .value{font-family:var(--font-mono); font-size:24px; font-weight:700;}
+  .cat-breakdown{margin-top:14px;}
+  .cat-breakdown-row{display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:12px; padding:5px 2px; border-bottom:1px dotted var(--rule);}
+
+  .modal-overlay{position:fixed; inset:0; background:rgba(20,20,15,0.6); z-index:60; display:none; align-items:flex-end; justify-content:center;}
+  .modal-overlay.show{display:flex;}
+  .modal{background:var(--paper); width:100%; max-width:520px; border-radius:10px 10px 0 0; padding:20px 16px calc(20px + env(safe-area-inset-bottom)); max-height:85vh; overflow-y:auto;}
+  .modal-handle{width:36px; height:4px; background:var(--rule); border-radius:2px; margin:0 auto 14px;}
+  a.link{color:var(--stamp); font-family:var(--font-mono); font-size:12px; text-decoration:underline;}
+  .helptext{font-family:var(--font-mono); font-size:11px; color:var(--ink-soft); text-align:left; margin-top:8px; line-height:1.6;}
+
+  @media print{
+    body *{visibility:hidden;}
+    #printArea, #printArea *{visibility:visible;}
+    #printArea{position:absolute; top:0; left:0; width:100%; padding:0; margin:0;}
+    nav.tabs, header.top{display:none;}
+  }
+  #printArea{display:none;}
+</style>
+</head>
+<body>
+
+<!-- GATE: Google sign-in / client id setup -->
+<div id="gate-screen">
+  <div class="gate-box">
+    <h1>Scontrino</h1>
+    <p id="gate-text">I tuoi dati vengono salvati in una cartella "Scontrino App" nel tuo Google Drive, così puoi accedervi da qualunque dispositivo.</p>
+
+    <div id="gate-need-config">
+      <label style="text-align:left;">Google Client ID</label>
+      <input type="text" id="client-id-input" placeholder="xxxxx.apps.googleusercontent.com">
+      <button class="btn stamp" id="btn-save-client-id">Salva e continua</button>
+      <div class="helptext">Serve una sola volta. Chiedi a chi ha configurato l'app il Client ID, oppure creane uno tu (vedi istruzioni ricevute).</div>
+    </div>
+
+    <div id="gate-ready" style="display:none;">
+      <button class="btn google" id="btn-google-signin">🔒 Accedi con Google Drive</button>
+      <span class="gear-link" id="btn-change-client-id">Cambia Client ID</span>
+    </div>
+  </div>
+</div>
+
+<!-- Profile picker -->
+<div id="profile-screen" class="hidden">
+  <div class="profile-box">
+    <h1>Scontrino</h1>
+    <p>Chi sta usando l'app?</p>
+    <div class="profile-list" id="profile-list"></div>
+    <div class="profile-new">
+      <input type="text" id="new-profile-name" placeholder="Nuovo profilo (es. Papà)">
+      <button class="btn stamp small" id="btn-add-profile" type="button">Crea</button>
+    </div>
+    <span class="gear-link" id="btn-signout">Esci da Google</span>
+  </div>
+</div>
+
+<header class="top">
+  <h1>Scontrino</h1>
+  <div class="tagline">registro spese personali</div>
+  <div class="profile-switch" id="profile-switch"><span class="sync-dot" id="sync-dot"></span>👤 <b id="profile-switch-name">—</b> · cambia</div>
+</header>
+
+<div class="container">
+
+  <div class="view active" id="view-nuova">
+    <div class="card">
+      <h2>Nuova spesa</h2>
+      <label>Importo</label>
+      <div class="amount-row"><span>€</span><input type="number" id="f-amount" inputmode="decimal" step="0.01" min="0" placeholder="0,00"></div>
+      <label>Descrizione (facoltativa)</label>
+      <input type="text" id="f-desc" placeholder="Es. Spesa al supermercato">
+      <label>Data</label>
+      <input type="date" id="f-date">
+      <label>Categoria (facoltativa)</label>
+      <div class="chips" id="f-categories"></div>
+      <label>Foto scontrino/fattura (facoltativa)</label>
+      <div class="photo-picker" id="photo-picker-area">📷 Tocca per scattare o scegliere una foto</div>
+      <input type="file" id="f-photo" accept="image/*" capture="environment" style="display:none;">
+      <img id="photo-preview" class="photo-preview" style="display:none;">
+      <div class="photo-actions" id="photo-actions" style="display:none;">
+        <button class="btn secondary small" id="btn-photo-remove" type="button">Rimuovi foto</button>
+      </div>
+      <button class="btn stamp" id="btn-save-expense">✓ Registra spesa</button>
+    </div>
+  </div>
+
+  <div class="view" id="view-spese"><div id="lista-spese"></div></div>
+
+  <div class="view" id="view-report">
+    <div class="card">
+      <h2>Estrai report</h2>
+      <div class="period-pills">
+        <button data-period="day" class="active">Oggi</button>
+        <button data-period="month">Mese</button>
+        <button data-period="year">Anno</button>
+        <button data-period="custom">Periodo</button>
+      </div>
+      <div class="custom-dates" id="custom-dates">
+        <div><label>Dal</label><input type="date" id="r-from"></div>
+        <div><label>Al</label><input type="date" id="r-to"></div>
+      </div>
+      <div class="btn-row"><button class="btn secondary" id="btn-anteprima">Anteprima</button></div>
+    </div>
+
+    <div class="card" id="report-preview" style="display:none;">
+      <h2 id="report-title">Riepilogo</h2>
+      <div id="report-list"></div>
+      <div class="total-line"><div class="label">Totale</div><div class="value" id="report-total">€ 0,00</div></div>
+      <div class="cat-breakdown" id="report-cats"></div>
+      <div class="btn-row">
+        <button class="btn secondary" id="btn-print">🖨 Stampa</button>
+        <button class="btn secondary" id="btn-pdf">PDF</button>
+      </div>
+      <button class="btn stamp" id="btn-excel">⬇ Esporta Excel</button>
+    </div>
+  </div>
+
+</div>
+
+<nav class="tabs">
+  <button data-view="nuova" class="active"><span class="icon">＋</span>Nuova</button>
+  <button data-view="spese"><span class="icon">≡</span>Spese</button>
+  <button data-view="report"><span class="icon">▤</span>Report</button>
+</nav>
+
+<div id="toast"></div>
+
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<div id="printArea"></div>
+
+<script>
+(function(){
+
+const SCOPES = "https://www.googleapis.com/auth/drive.file";
+const CATEGORIES = ["Alimentari","Trasporti","Casa","Salute","Svago","Ristoranti","Bollette","Abbigliamento","Regali","Altro"];
+
+let state = {
+  expenses: [], currentPhotoBlob: null, selectedCategory: null,
+  reportPeriod: 'day', reportData: null,
+  profile: null, profiles: [],
+  accessToken: null, tokenClient: null,
+  appFolderId: null, profileFolderId: null, indexFileId: null, photosFolderId: null
+};
+
+// ---------- Toast ----------
+let toastTimer;
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> t.classList.remove('show'), 2400);
+}
+function setSync(mode){ // 'ok' | 'busy' | 'err'
+  const dot = document.getElementById('sync-dot');
+  dot.className = 'sync-dot' + (mode==='busy' ? ' busy' : mode==='err' ? ' err' : '');
+}
+
+// ---------- Local prefs (fine to use localStorage: this is a standalone page, not a Claude artifact) ----------
+function getClientId(){ return localStorage.getItem('scontrino_client_id') || ''; }
+function setClientId(id){ localStorage.setItem('scontrino_client_id', id); }
+function getLastProfile(){ return localStorage.getItem('scontrino_last_profile') || ''; }
+function setLastProfile(name){ localStorage.setItem('scontrino_last_profile', name); }
+
+// ---------- Google sign-in ----------
+document.getElementById('btn-save-client-id').addEventListener('click', ()=>{
+  const id = document.getElementById('client-id-input').value.trim();
+  if(!id){ toast('Incolla un Client ID valido'); return; }
+  setClientId(id);
+  showGateReady();
+});
+document.getElementById('btn-change-client-id').addEventListener('click', ()=>{
+  document.getElementById('gate-need-config').style.display = 'block';
+  document.getElementById('gate-ready').style.display = 'none';
+  document.getElementById('client-id-input').value = getClientId();
+});
+
+function showGateReady(){
+  document.getElementById('gate-need-config').style.display = 'none';
+  document.getElementById('gate-ready').style.display = 'block';
+}
+
+function initGis(){
+  const id = getClientId();
+  if(!id) return;
+  state.tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: id,
+    scope: SCOPES,
+    callback: async (resp)=>{
+      if(resp.error){ toast('Accesso non riuscito'); return; }
+      state.accessToken = resp.access_token;
+      document.getElementById('gate-screen').classList.add('hidden');
+      setSync('busy');
+      await bootstrapDrive();
+      setSync('ok');
+    }
+  });
+}
+
+document.getElementById('btn-google-signin').addEventListener('click', ()=>{
+  if(!state.tokenClient) initGis();
+  state.tokenClient.requestAccessToken({prompt:'consent'});
+});
+document.getElementById('btn-signout').addEventListener('click', ()=>{
+  if(state.accessToken){ google.accounts.oauth2.revoke(state.accessToken, ()=>{}); }
+  state.accessToken = null;
+  localStorage.removeItem('scontrino_last_profile');
+  document.getElementById('profile-screen').classList.add('hidden');
+  document.getElementById('gate-screen').classList.remove('hidden');
+});
+
+// ---------- Drive REST helpers ----------
+async function driveFetch(url, opts={}, retry=true){
+  opts.headers = opts.headers || {};
+  opts.headers['Authorization'] = 'Bearer ' + state.accessToken;
+  const res = await fetch(url, opts);
+  if(res.status === 401 && retry){
+    // token expired, ask to sign in again
+    setSync('err');
+    toast('Sessione scaduta, accedi di nuovo');
+    state.tokenClient.requestAccessToken({prompt:''});
+    throw new Error('unauthorized');
+  }
+  return res;
+}
+
+async function findFile(name, parentId, mimeTypeFilter){
+  let q = `name='${name.replace(/'/g,"\\'")}' and trashed=false and '${parentId}' in parents`;
+  if(mimeTypeFilter) q += ` and mimeType='${mimeTypeFilter}'`;
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&spaces=drive`);
+  const data = await res.json();
+  return (data.files && data.files.length) ? data.files[0].id : null;
+}
+async function findOrCreateFolder(name, parentId){
+  let existing = await findFile(name, parentId || 'root', 'application/vnd.google-apps.folder');
+  if(existing) return existing;
+  const meta = {name, mimeType:'application/vnd.google-apps.folder'};
+  meta.parents = [parentId || 'root'];
+  const res = await driveFetch('https://www.googleapis.com/drive/v3/files', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(meta)
+  });
+  const created = await res.json();
+  return created.id;
+}
+async function driveWriteText(fileId, name, parentId, content){
+  if(!fileId){
+    const res = await driveFetch('https://www.googleapis.com/drive/v3/files', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name, parents:[parentId]})
+    });
+    const created = await res.json();
+    fileId = created.id;
+  }
+  await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+    method:'PATCH', headers:{'Content-Type':'application/json; charset=UTF-8'}, body: content
+  });
+  return fileId;
+}
+async function driveReadText(fileId){
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+  return await res.text();
+}
+async function driveUploadPhoto(name, parentId, blob){
+  const res = await driveFetch('https://www.googleapis.com/drive/v3/files', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({name, parents:[parentId]})
+  });
+  const created = await res.json();
+  await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${created.id}?uploadType=media`, {
+    method:'PATCH', headers:{'Content-Type':'image/jpeg'}, body: blob
+  });
+  return created.id;
+}
+async function driveGetPhotoDataUrl(fileId){
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+  const blob = await res.blob();
+  return await new Promise(resolve=>{
+    const reader = new FileReader();
+    reader.onload = ()=> resolve(reader.result);
+    reader.readAsDataURL(blob);
+  });
+}
+async function driveDeletePhoto(fileId){
+  try{ await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {method:'DELETE'}); }catch(e){}
+}
+
+// ---------- App folder bootstrap ----------
+async function bootstrapDrive(){
+  state.appFolderId = await findOrCreateFolder('Scontrino App', 'root');
+  let profilesFileId = await findFile('profiles.json', state.appFolderId);
+  if(!profilesFileId){
+    profilesFileId = await driveWriteText(null, 'profiles.json', state.appFolderId, JSON.stringify([]));
+    state.profiles = [];
+  } else {
+    state.profiles = JSON.parse(await driveReadText(profilesFileId));
+  }
+  state.profilesFileId = profilesFileId;
+
+  const last = getLastProfile();
+  if(last && state.profiles.includes(last)){
+    await selectProfile(last);
+  } else {
+    renderProfileList();
+    document.getElementById('profile-screen').classList.remove('hidden');
+  }
+}
+
+function renderProfileList(){
+  const wrap = document.getElementById('profile-list');
+  if(state.profiles.length === 0){
+    wrap.innerHTML = '<div class="empty" style="padding:10px 0;">Nessun profilo ancora — creane uno qui sotto.</div>';
+    return;
+  }
+  wrap.innerHTML = state.profiles.map(name => `
+    <div class="profile-item" data-name="${escapeHtml(name)}">
+      <span class="name">${escapeHtml(name)}</span><span class="arrow">→</span>
+    </div>`).join('');
+  wrap.querySelectorAll('.profile-item').forEach(el=>{
+    el.addEventListener('click', ()=> selectProfile(el.dataset.name));
+  });
+}
+
+document.getElementById('btn-add-profile').addEventListener('click', async ()=>{
+  const input = document.getElementById('new-profile-name');
+  const name = input.value.trim();
+  if(!name){ toast('Scrivi un nome'); return; }
+  if(!state.profiles.includes(name)){
+    state.profiles.push(name);
+    setSync('busy');
+    await driveWriteText(state.profilesFileId, 'profiles.json', state.appFolderId, JSON.stringify(state.profiles));
+    setSync('ok');
+  }
+  input.value = '';
+  renderProfileList();
+  selectProfile(name);
+});
+
+async function selectProfile(name){
+  setSync('busy');
+  state.profile = name;
+  document.getElementById('profile-switch-name').textContent = name;
+  document.getElementById('profile-screen').classList.add('hidden');
+  setLastProfile(name);
+
+  state.profileFolderId = await findOrCreateFolder(name, state.appFolderId);
+  state.photosFolderId = await findOrCreateFolder('foto', state.profileFolderId);
+  state.indexFileId = await findFile('spese.json', state.profileFolderId);
+  if(!state.indexFileId){
+    state.indexFileId = await driveWriteText(null, 'spese.json', state.profileFolderId, JSON.stringify([]));
+    state.expenses = [];
+  } else {
+    state.expenses = JSON.parse(await driveReadText(state.indexFileId));
+  }
+  setSync('ok');
+  renderExpenseList();
+}
+
+document.getElementById('profile-switch').addEventListener('click', ()=>{
+  renderProfileList();
+  document.getElementById('profile-screen').classList.remove('hidden');
+});
+
+async function saveIndex(){
+  setSync('busy');
+  try{
+    await driveWriteText(state.indexFileId, 'spese.json', state.profileFolderId, JSON.stringify(state.expenses));
+    setSync('ok');
+  }catch(e){ setSync('err'); toast('Errore di sincronizzazione'); }
+}
+
+// ---------- Tabs ----------
+document.querySelectorAll('nav.tabs button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    document.getElementById('view-'+btn.dataset.view).classList.add('active');
+    if(btn.dataset.view === 'spese') renderExpenseList();
+  });
+});
+
+// ---------- Category chips ----------
+function renderCategoryChips(){
+  const wrap = document.getElementById('f-categories');
+  wrap.innerHTML = '';
+  CATEGORIES.forEach(cat=>{
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (state.selectedCategory === cat ? ' selected' : '');
+    chip.textContent = cat;
+    chip.addEventListener('click', ()=>{
+      state.selectedCategory = (state.selectedCategory === cat) ? null : cat;
+      renderCategoryChips();
+    });
+    wrap.appendChild(chip);
+  });
+}
+renderCategoryChips();
+
+// ---------- Photo picker ----------
+document.getElementById('photo-picker-area').addEventListener('click', ()=> document.getElementById('f-photo').click());
+document.getElementById('f-photo').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev)=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const maxDim = 1400;
+      let w = img.width, h = img.height;
+      if(w > h && w > maxDim){ h = h*maxDim/w; w = maxDim; }
+      else if(h > maxDim){ w = w*maxDim/h; h = maxDim; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob((blob)=>{
+        state.currentPhotoBlob = blob;
+        const preview = document.getElementById('photo-preview');
+        preview.src = URL.createObjectURL(blob);
+        preview.style.display = 'block';
+        document.getElementById('photo-actions').style.display = 'flex';
+        document.getElementById('photo-picker-area').textContent = '📷 Foto selezionata — tocca per cambiarla';
+      }, 'image/jpeg', 0.78);
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+document.getElementById('btn-photo-remove').addEventListener('click', (e)=>{
+  e.stopPropagation();
+  state.currentPhotoBlob = null;
+  document.getElementById('photo-preview').style.display = 'none';
+  document.getElementById('photo-actions').style.display = 'none';
+  document.getElementById('f-photo').value = '';
+  document.getElementById('photo-picker-area').textContent = '📷 Tocca per scattare o scegliere una foto';
+});
+
+// ---------- Save expense ----------
+document.getElementById('f-date').valueAsDate = new Date();
+
+document.getElementById('btn-save-expense').addEventListener('click', async ()=>{
+  const amountRaw = document.getElementById('f-amount').value;
+  const amount = parseFloat(amountRaw.replace(',', '.'));
+  if(!amountRaw || isNaN(amount) || amount <= 0){ toast('Inserisci un importo valido'); return; }
+  const date = document.getElementById('f-date').value || new Date().toISOString().slice(0,10);
+  const desc = document.getElementById('f-desc').value.trim() || (state.selectedCategory || 'Spesa');
+  const id = 'e' + Date.now() + Math.random().toString(36).slice(2,7);
+
+  const entry = { id, date, amount: Math.round(amount*100)/100, desc, category: state.selectedCategory || null, photoFileId: null };
+
+  const saveBtn = document.getElementById('btn-save-expense');
+  saveBtn.disabled = true; saveBtn.textContent = 'Salvataggio...';
+  try{
+    if(state.currentPhotoBlob){
+      entry.photoFileId = await driveUploadPhoto(id + '.jpg', state.photosFolderId, state.currentPhotoBlob);
+    }
+    state.expenses.unshift(entry);
+    await saveIndex();
+
+    document.getElementById('f-amount').value = '';
+    document.getElementById('f-desc').value = '';
+    document.getElementById('f-date').valueAsDate = new Date();
+    state.selectedCategory = null;
+    renderCategoryChips();
+    document.getElementById('btn-photo-remove').click();
+    toast('Spesa registrata ✓');
+  }catch(err){
+    toast('Errore durante il salvataggio, riprova');
+  }finally{
+    saveBtn.disabled = false; saveBtn.textContent = '✓ Registra spesa';
+  }
+});
+
+// ---------- Expense list ----------
+function fmtEUR(n){ return '€ ' + n.toLocaleString('it-IT', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+function fmtDateIt(dstr){ const d = new Date(dstr+'T00:00:00'); return d.toLocaleDateString('it-IT', {day:'2-digit', month:'short', year:'numeric'}); }
+
+function renderExpenseList(){
+  const container = document.getElementById('lista-spese');
+  if(state.expenses.length === 0){
+    container.innerHTML = '<div class="empty">Nessuna spesa registrata ancora.<br>Vai su "Nuova" per aggiungerne una.</div>';
+    return;
+  }
+  const sorted = [...state.expenses].sort((a,b)=> b.date.localeCompare(a.date) || (b.id > a.id ? 1 : -1));
+  const groups = {};
+  sorted.forEach(e=>{ if(!groups[e.date]) groups[e.date] = []; groups[e.date].push(e); });
+  let html = '';
+  Object.keys(groups).sort().reverse().forEach(date=>{
+    const dayTotal = groups[date].reduce((s,e)=> s+e.amount, 0);
+    html += `<div class="day-header"><span>${fmtDateIt(date)}</span><span>${fmtEUR(dayTotal)}</span></div><div class="receipt">`;
+    groups[date].forEach(e=>{
+      html += `<div class="exp-row" data-id="${e.id}">
+        <div class="exp-main">
+          <div class="exp-desc">${escapeHtml(e.desc)}</div>
+          <div class="exp-meta">${e.category ? '<span class="cat">'+escapeHtml(e.category)+'</span>' : ''}</div>
+        </div>
+        <div class="exp-amount">${fmtEUR(e.amount)}${e.photoFileId ? '<span class="exp-camera">📎</span>' : ''}</div>
+      </div>`;
+    });
+    html += '</div>';
+  });
+  container.innerHTML = html;
+  container.querySelectorAll('.exp-row').forEach(row=> row.addEventListener('click', ()=> openExpenseDetail(row.dataset.id)));
+}
+function escapeHtml(s){ const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+async function openExpenseDetail(id){
+  const entry = state.expenses.find(e=>e.id===id);
+  if(!entry) return;
+  document.getElementById('modal-content').innerHTML = `
+    <h2 style="font-family:var(--font-display); font-style:italic; margin-top:0;">${escapeHtml(entry.desc)}</h2>
+    <div style="font-family:var(--font-mono); font-size:13px; color:var(--ink-soft); margin-bottom:10px;">
+      ${fmtDateIt(entry.date)} ${entry.category ? '· '+escapeHtml(entry.category) : ''}
+    </div>
+    <div style="font-family:var(--font-mono); font-size:28px; font-weight:700; margin-bottom:14px;">${fmtEUR(entry.amount)}</div>
+    <div id="modal-photo-wrap">${entry.photoFileId ? '<div class="helptext">Caricamento foto...</div>' : ''}</div>
+    <button class="btn secondary" id="btn-delete-expense">Elimina spesa</button>
+  `;
+  document.getElementById('modal-overlay').classList.add('show');
+  if(entry.photoFileId){
+    driveGetPhotoDataUrl(entry.photoFileId).then(dataUrl=>{
+      document.getElementById('modal-photo-wrap').innerHTML = `<img src="${dataUrl}" class="photo-preview">`;
+    }).catch(()=>{ document.getElementById('modal-photo-wrap').innerHTML = '<div class="helptext">Impossibile caricare la foto.</div>'; });
+  }
+  document.getElementById('btn-delete-expense').addEventListener('click', async ()=>{
+    if(confirm('Eliminare questa spesa?')){
+      state.expenses = state.expenses.filter(e=>e.id!==id);
+      await saveIndex();
+      if(entry.photoFileId) await driveDeletePhoto(entry.photoFileId);
+      document.getElementById('modal-overlay').classList.remove('show');
+      renderExpenseList();
+      toast('Spesa eliminata');
+    }
+  });
+}
+document.getElementById('modal-overlay').addEventListener('click', (e)=>{ if(e.target.id === 'modal-overlay') e.target.classList.remove('show'); });
+
+// ---------- Report ----------
+document.querySelectorAll('.period-pills button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.period-pills button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    state.reportPeriod = btn.dataset.period;
+    document.getElementById('custom-dates').classList.toggle('show', state.reportPeriod==='custom');
+    document.getElementById('report-preview').style.display = 'none';
+  });
+});
+document.getElementById('r-from').valueAsDate = new Date();
+document.getElementById('r-to').valueAsDate = new Date();
+
+function getRangeForPeriod(){
+  const today = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const toISO = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  if(state.reportPeriod === 'day'){ const s = toISO(today); return {from:s, to:s, label:'Spese di oggi — '+fmtDateIt(s)}; }
+  if(state.reportPeriod === 'month'){
+    const from = new Date(today.getFullYear(), today.getMonth(), 1);
+    const to = new Date(today.getFullYear(), today.getMonth()+1, 0);
+    return {from:toISO(from), to:toISO(to), label:'Spese di '+today.toLocaleDateString('it-IT',{month:'long', year:'numeric'})};
+  }
+  if(state.reportPeriod === 'year'){
+    const from = new Date(today.getFullYear(),0,1); const to = new Date(today.getFullYear(),11,31);
+    return {from:toISO(from), to:toISO(to), label:'Spese dell\\'anno '+today.getFullYear()};
+  }
+  const from = document.getElementById('r-from').value;
+  const to = document.getElementById('r-to').value;
+  return {from, to, label:'Spese dal '+fmtDateIt(from)+' al '+fmtDateIt(to)};
+}
+
+document.getElementById('btn-anteprima').addEventListener('click', ()=>{
+  const range = getRangeForPeriod();
+  if(!range.from || !range.to){ toast('Seleziona entrambe le date'); return; }
+  const filtered = state.expenses.filter(e=> e.date >= range.from && e.date <= range.to).sort((a,b)=> a.date.localeCompare(b.date));
+  state.reportData = {...range, items: filtered};
+
+  document.getElementById('report-title').textContent = range.label;
+  const total = filtered.reduce((s,e)=>s+e.amount,0);
+  document.getElementById('report-total').textContent = fmtEUR(total);
+
+  const listEl = document.getElementById('report-list');
+  listEl.innerHTML = filtered.length === 0 ? '<div class="empty">Nessuna spesa nel periodo selezionato.</div>' :
+    '<div class="receipt">' + filtered.map(e=>`
+      <div class="exp-row">
+        <div class="exp-main">
+          <div class="exp-desc">${escapeHtml(e.desc)}</div>
+          <div class="exp-meta">${fmtDateIt(e.date)} ${e.category ? '· <span class="cat">'+escapeHtml(e.category)+'</span>' : ''}</div>
+        </div>
+        <div class="exp-amount">${fmtEUR(e.amount)}</div>
+      </div>`).join('') + '</div>';
+
+  const byCat = {};
+  filtered.forEach(e=>{ const c = e.category || 'Senza categoria'; byCat[c] = (byCat[c]||0) + e.amount; });
+  const catEl = document.getElementById('report-cats');
+  const catKeys = Object.keys(byCat).sort((a,b)=> byCat[b]-byCat[a]);
+  catEl.innerHTML = catKeys.length ? '<div class="day-header"><span>Per categoria</span></div>' +
+    catKeys.map(c=>`<div class="cat-breakdown-row"><span>${escapeHtml(c)}</span><span>${fmtEUR(byCat[c])}</span></div>`).join('') : '';
+
+  document.getElementById('report-preview').style.display = 'block';
+  document.getElementById('report-preview').scrollIntoView({behavior:'smooth', block:'start'});
+});
+
+document.getElementById('btn-print').addEventListener('click', ()=>{
+  if(!state.reportData) return;
+  const {label, items} = state.reportData;
+  const total = items.reduce((s,e)=>s+e.amount,0);
+  const byCat = {};
+  items.forEach(e=>{ const c = e.category || 'Senza categoria'; byCat[c] = (byCat[c]||0)+e.amount; });
+  let rows = items.map(e=>`
+    <tr>
+      <td style="padding:6px 8px; border-bottom:1px solid #ddd;">${fmtDateIt(e.date)}</td>
+      <td style="padding:6px 8px; border-bottom:1px solid #ddd;">${escapeHtml(e.desc)}</td>
+      <td style="padding:6px 8px; border-bottom:1px solid #ddd;">${escapeHtml(e.category||'—')}</td>
+      <td style="padding:6px 8px; border-bottom:1px solid #ddd; text-align:right;">${fmtEUR(e.amount)}</td>
+    </tr>`).join('');
+  let catRows = Object.keys(byCat).sort((a,b)=>byCat[b]-byCat[a]).map(c=>`<tr><td style="padding:4px 8px;">${escapeHtml(c)}</td><td style="padding:4px 8px; text-align:right;">${fmtEUR(byCat[c])}</td></tr>`).join('');
+  document.getElementById('printArea').innerHTML = `
+    <div style="font-family:Georgia,serif; padding:20px;">
+      <h1 style="font-style:italic; border-bottom:2px solid #000; padding-bottom:10px;">Scontrino — ${escapeHtml(label)}</h1>
+      <table style="width:100%; border-collapse:collapse; font-family:Arial,sans-serif; font-size:13px; margin-top:16px;">
+        <thead><tr>
+          <th style="text-align:left; padding:6px 8px; border-bottom:2px solid #000;">Data</th>
+          <th style="text-align:left; padding:6px 8px; border-bottom:2px solid #000;">Descrizione</th>
+          <th style="text-align:left; padding:6px 8px; border-bottom:2px solid #000;">Categoria</th>
+          <th style="text-align:right; padding:6px 8px; border-bottom:2px solid #000;">Importo</th>
+        </tr></thead>
+        <tbody>${rows || '<tr><td colspan="4" style="padding:10px; text-align:center;">Nessuna spesa</td></tr>'}</tbody>
+      </table>
+      <h2 style="text-align:right; margin-top:16px;">Totale: ${fmtEUR(total)}</h2>
+      ${catRows ? '<h3 style="margin-top:24px;">Per categoria</h3><table style="width:100%; font-family:Arial,sans-serif; font-size:13px;">'+catRows+'</table>' : ''}
+    </div>`;
+  window.print();
+});
+
+document.getElementById('btn-pdf').addEventListener('click', ()=>{
+  if(!state.reportData) return;
+  const {label, items} = state.reportData;
+  const total = items.reduce((s,e)=>s+e.amount,0);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFont('times','italic'); doc.setFontSize(18); doc.text('Scontrino', 14, 18);
+  doc.setFont('helvetica','normal'); doc.setFontSize(11); doc.text(label, 14, 26);
+  const body = items.map(e=>[fmtDateIt(e.date), e.desc, e.category||'—', fmtEUR(e.amount)]);
+  doc.autoTable({ startY: 32, head: [['Data','Descrizione','Categoria','Importo']], body: body.length ? body : [['—','Nessuna spesa nel periodo','—','—']], styles:{fontSize:9}, headStyles:{fillColor:[32,38,31]}, columnStyles:{3:{halign:'right'}} });
+  const finalY = doc.lastAutoTable.finalY + 10;
+  doc.setFontSize(13); doc.setFont('helvetica','bold'); doc.text('Totale: ' + fmtEUR(total), 14, finalY);
+  const byCat = {};
+  items.forEach(e=>{ const c = e.category || 'Senza categoria'; byCat[c] = (byCat[c]||0)+e.amount; });
+  const catKeys = Object.keys(byCat).sort((a,b)=>byCat[b]-byCat[a]);
+  if(catKeys.length){
+    doc.autoTable({ startY: finalY + 8, head:[['Categoria','Totale']], body: catKeys.map(c=>[c, fmtEUR(byCat[c])]), styles:{fontSize:9}, headStyles:{fillColor:[177,67,40]}, columnStyles:{1:{halign:'right'}} });
+  }
+  doc.save('spese_' + state.reportData.from + '_' + state.reportData.to + '.pdf');
+  toast('PDF scaricato');
+});
+
+document.getElementById('btn-excel').addEventListener('click', ()=>{
+  if(!state.reportData) return;
+  const {items} = state.reportData;
+  const rows = items.map(e=>({ Data: e.date, Descrizione: e.desc, Categoria: e.category || '', 'Importo (€)': e.amount }));
+  const total = items.reduce((s,e)=>s+e.amount,0);
+  rows.push({Data:'', Descrizione:'', Categoria:'TOTALE', 'Importo (€)': total});
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [{wch:12},{wch:32},{wch:16},{wch:12}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Spese');
+  XLSX.writeFile(wb, 'spese_' + state.reportData.from + '_' + state.reportData.to + '.xlsx');
+  toast('Excel scaricato');
+});
+
+// ---------- Init ----------
+(function init(){
+  const id = getClientId();
+  if(id){
+    document.getElementById('client-id-input').value = id;
+    showGateReady();
+    initGis();
+  }
+})();
+
+})();
+</script>
+</body>
+</html>
