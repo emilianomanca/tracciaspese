@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Scontrino — Le tue spese</title>
 <meta name="theme-color" content="#F7F4EC">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Scontrino">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -43,6 +50,10 @@
   .profile-item .arrow{color:var(--stamp); font-family:var(--font-mono);}
   .profile-new{display:flex; gap:8px;}
   .profile-new input{flex:1;}
+  .alias-row{display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 0; border-bottom:1px dashed var(--rule); font-family:var(--font-mono); font-size:12px;}
+  .alias-row .alias-name{font-weight:700; font-family:var(--font-body);}
+  .alias-row .alias-email{color:var(--ink-soft); font-size:11px;}
+  .alias-row .alias-del{color:var(--stamp); cursor:pointer; font-size:16px;}
   .gear-link{display:block; margin-top:18px; font-family:var(--font-mono); font-size:11px; color:var(--ink-soft); text-decoration:underline; cursor:pointer;}
 
   .card{background:#fff; border:1px solid var(--rule); border-radius:2px; padding:16px; margin-bottom:14px; box-shadow:0 1px 0 rgba(0,0,0,0.03); text-align:left;}
@@ -151,8 +162,20 @@
     </div>
 
     <div id="gate-ready" style="display:none;">
-      <button class="btn google" id="btn-google-signin">🔒 Accedi con Google Drive</button>
+      <div class="profile-list" id="alias-list"></div>
+      <button class="btn google" id="btn-google-signin">🔒 Accedi con un altro account Google</button>
+      <span class="gear-link" id="btn-manage-aliases">Gestisci alias</span>
       <span class="gear-link" id="btn-change-client-id">Cambia Client ID</span>
+    </div>
+
+    <div id="alias-manage" style="display:none; text-align:left;">
+      <div id="alias-manage-list" style="margin-bottom:14px;"></div>
+      <label>Nome (alias)</label>
+      <input type="text" id="new-alias-name" placeholder="Es. Paolo">
+      <label>Email Google corrispondente</label>
+      <input type="text" id="new-alias-email" placeholder="nome@gmail.com">
+      <button class="btn stamp small" id="btn-add-alias" type="button" style="margin-top:12px;">Aggiungi alias</button>
+      <span class="gear-link" id="btn-close-alias-manage">← Torna indietro</span>
     </div>
   </div>
 </div>
@@ -260,7 +283,7 @@
 <script>
 (function(){
 
-const SCOPES = "https://www.googleapis.com/auth/drive.file";
+const SCOPES = "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email";
 const CATEGORIES = ["Alimentari","Carburante","Casa","Salute","Bollette","Abbigliamento","Tasse","Altro"];
 
 let state = {
@@ -298,6 +321,90 @@ function setClientId(id){ lsSet('scontrino_client_id', id); }
 function getLastProfile(){ return lsGet('scontrino_last_profile') || ''; }
 function setLastProfile(name){ lsSet('scontrino_last_profile', name); }
 
+// ---------- Alias -> account Google ----------
+const DEFAULT_ALIASES = [
+  { name: 'Paolo', email: 'paolo.manca9@gmail.com' },
+  { name: 'Emiliano', email: 'emiliano.manca@gmail.com' }
+];
+function getAliases(){
+  const raw = lsGet('scontrino_aliases');
+  if(raw){ try{ return JSON.parse(raw); }catch(e){} }
+  lsSet('scontrino_aliases', JSON.stringify(DEFAULT_ALIASES));
+  return DEFAULT_ALIASES.slice();
+}
+function setAliases(list){ lsSet('scontrino_aliases', JSON.stringify(list)); }
+function getLastEmail(){ return lsGet('scontrino_last_email') || ''; }
+function setLastEmail(email){ lsSet('scontrino_last_email', email); }
+function isAliasGranted(email){ return lsGet('scontrino_granted_' + email) === '1'; }
+function setAliasGranted(email){ lsSet('scontrino_granted_' + email, '1'); }
+
+function renderAliasList(){
+  const wrap = document.getElementById('alias-list');
+  const aliases = getAliases();
+  if(aliases.length === 0){ wrap.innerHTML = ''; return; }
+  wrap.innerHTML = aliases.map(a => `
+    <div class="profile-item" data-email="${escapeHtml(a.email)}">
+      <span class="name">${escapeHtml(a.name)}</span><span class="arrow">→</span>
+    </div>`).join('');
+  wrap.querySelectorAll('.profile-item').forEach(el=>{
+    el.addEventListener('click', ()=> signInWithHint(el.dataset.email));
+  });
+}
+
+function renderAliasManageList(){
+  const wrap = document.getElementById('alias-manage-list');
+  const aliases = getAliases();
+  wrap.innerHTML = aliases.length ? aliases.map((a,i)=>`
+    <div class="alias-row" data-index="${i}">
+      <div><div class="alias-name">${escapeHtml(a.name)}</div><div class="alias-email">${escapeHtml(a.email)}</div></div>
+      <span class="alias-del" data-index="${i}">✕</span>
+    </div>`).join('') : '<div class="helptext">Nessun alias ancora configurato.</div>';
+  wrap.querySelectorAll('.alias-del').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const aliases = getAliases();
+      aliases.splice(parseInt(el.dataset.index,10), 1);
+      setAliases(aliases);
+      renderAliasManageList();
+      renderAliasList();
+    });
+  });
+}
+
+document.getElementById('btn-manage-aliases').addEventListener('click', ()=>{
+  document.getElementById('gate-ready').style.display = 'none';
+  document.getElementById('alias-manage').style.display = 'block';
+  renderAliasManageList();
+});
+document.getElementById('btn-close-alias-manage').addEventListener('click', ()=>{
+  document.getElementById('alias-manage').style.display = 'none';
+  document.getElementById('gate-ready').style.display = 'block';
+  renderAliasList();
+});
+document.getElementById('btn-add-alias').addEventListener('click', ()=>{
+  const name = document.getElementById('new-alias-name').value.trim();
+  const email = document.getElementById('new-alias-email').value.trim().toLowerCase();
+  if(!name || !email || !email.includes('@')){ toast('Inserisci nome ed email validi'); return; }
+  const aliases = getAliases();
+  aliases.push({name, email});
+  setAliases(aliases);
+  document.getElementById('new-alias-name').value = '';
+  document.getElementById('new-alias-email').value = '';
+  renderAliasManageList();
+  renderAliasList();
+  toast('Alias aggiunto');
+});
+
+function signInWithHint(email){
+  if(window.self !== window.top){
+    toast("Apri il link diretto del file, non l'anteprima integrata");
+    return;
+  }
+  if(!state.tokenClient) initGis();
+  setLastEmail(email);
+  const alreadyGranted = isAliasGranted(email);
+  state.tokenClient.requestAccessToken({ prompt: alreadyGranted ? '' : 'consent', hint: email });
+}
+
 // ---------- Google sign-in ----------
 document.getElementById('btn-save-client-id').addEventListener('click', ()=>{
   try{
@@ -323,6 +430,8 @@ document.getElementById('btn-change-client-id').addEventListener('click', ()=>{
 function showGateReady(){
   document.getElementById('gate-need-config').style.display = 'none';
   document.getElementById('gate-ready').style.display = 'block';
+  document.getElementById('alias-manage').style.display = 'none';
+  renderAliasList();
 }
 
 function initGis(){
@@ -340,8 +449,14 @@ function initGis(){
         document.getElementById('gate-autologin-msg').style.display = 'none';
         return;
       }
-      lsSet('scontrino_granted', '1');
       state.accessToken = resp.access_token;
+      let email = getLastEmail();
+      try{
+        const uRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: 'Bearer ' + state.accessToken } });
+        const uData = await uRes.json();
+        if(uData && uData.email) email = uData.email;
+      }catch(e){ /* non bloccante */ }
+      if(email){ setLastEmail(email); setAliasGranted(email); }
       document.getElementById('gate-screen').classList.add('hidden');
       setSync('busy');
       await bootstrapDrive();
@@ -356,13 +471,13 @@ document.getElementById('btn-google-signin').addEventListener('click', ()=>{
     return;
   }
   if(!state.tokenClient) initGis();
-  const alreadyGranted = lsGet('scontrino_granted') === '1';
-  state.tokenClient.requestAccessToken({prompt: alreadyGranted ? '' : 'consent'});
+  state.tokenClient.requestAccessToken({prompt:'consent'});
 });
 document.getElementById('btn-signout').addEventListener('click', ()=>{
   if(state.accessToken){ google.accounts.oauth2.revoke(state.accessToken, ()=>{}); }
+  const email = getLastEmail();
+  if(email) lsSet('scontrino_granted_' + email, '');
   state.accessToken = null;
-  lsSet('scontrino_granted', '');
   localStorage.removeItem('scontrino_last_profile');
   document.getElementById('profile-screen').classList.add('hidden');
   document.getElementById('gate-screen').classList.remove('hidden');
@@ -378,7 +493,7 @@ async function driveFetch(url, opts={}, retry=true){
     // token expired, ask to sign in again
     setSync('err');
     toast('Sessione scaduta, accedi di nuovo');
-    state.tokenClient.requestAccessToken({prompt:''});
+    state.tokenClient.requestAccessToken({prompt:'', hint: getLastEmail()});
     throw new Error('unauthorized');
   }
   return res;
@@ -400,6 +515,20 @@ async function findOrCreateFolder(name, parentId){
     method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(meta)
   });
   const created = await res.json();
+  return created.id;
+}
+// Cerca la cartella principale ovunque sia accessibile (propria o condivisa da un altro account),
+// non solo dentro "il mio Drive": indispensabile perché due account diversi vedano la stessa cartella.
+async function findOrCreateTopFolder(name){
+  const q = `name='${name.replace(/'/g,"\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,owners)&spaces=drive`);
+  const data = await res.json();
+  if(data.files && data.files.length) return data.files[0].id;
+  const meta = {name, mimeType:'application/vnd.google-apps.folder', parents:['root']};
+  const createRes = await driveFetch('https://www.googleapis.com/drive/v3/files', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(meta)
+  });
+  const created = await createRes.json();
   return created.id;
 }
 async function driveWriteText(fileId, name, parentId, content){
@@ -446,7 +575,7 @@ async function driveDeletePhoto(fileId){
 
 // ---------- App folder bootstrap ----------
 async function bootstrapDrive(){
-  state.appFolderId = await findOrCreateFolder('Scontrino App', 'root');
+  state.appFolderId = await findOrCreateTopFolder('Scontrino App');
   let profilesFileId = await findFile('profiles.json', state.appFolderId);
   if(!profilesFileId){
     profilesFileId = await driveWriteText(null, 'profiles.json', state.appFolderId, JSON.stringify([]));
@@ -959,12 +1088,13 @@ document.getElementById('btn-receipts-pdf').addEventListener('click', async ()=>
     document.getElementById('client-id-input').value = id;
     showGateReady();
     initGis();
-    if(lsGet('scontrino_granted') === '1' && window.self === window.top){
+    const lastEmail = getLastEmail();
+    if(lastEmail && isAliasGranted(lastEmail) && window.self === window.top){
       document.getElementById('gate-autologin-msg').style.display = 'block';
       document.getElementById('gate-ready').style.display = 'none';
       // piccolo ritardo per essere certi che lo script di Google si sia caricato
       setTimeout(()=>{
-        try{ state.tokenClient.requestAccessToken({prompt:''}); }
+        try{ state.tokenClient.requestAccessToken({prompt:'', hint: lastEmail}); }
         catch(e){ document.getElementById('gate-autologin-msg').style.display = 'none'; document.getElementById('gate-ready').style.display = 'block'; }
       }, 300);
     }
