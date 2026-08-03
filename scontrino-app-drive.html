@@ -25,14 +25,14 @@
     --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-  html,body{margin:0; padding:0; background:var(--paper); color:var(--ink); font-family:var(--font-body); min-height:100%;}
+  html,body{margin:0; padding:0; background:var(--paper); color:var(--ink); font-family:var(--font-body); min-height:100%; text-transform:uppercase;}
   body{padding-bottom:84px; background-image:radial-gradient(circle at 1px 1px, rgba(0,0,0,0.05) 1px, transparent 0); background-size:14px 14px;}
   .container{max-width:520px; margin:0 auto; padding:0 16px;}
 
   header.top{padding:22px 16px 14px; text-align:center; border-bottom:1px dashed var(--rule); background:var(--paper); position:sticky; top:0; z-index:20;}
-  header.top h1{font-family:var(--font-display); font-size:26px; letter-spacing:0.5px; margin:0; font-style:italic;}
-  header.top .tagline{font-family:var(--font-mono); font-size:10px; letter-spacing:0.5px; text-transform:uppercase; color:var(--ink-soft); margin-top:4px;}
-  .profile-switch{margin-top:10px; display:inline-flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:12px; color:var(--ink-soft); border:1px solid var(--rule); border-radius:20px; padding:5px 12px; cursor:pointer; background:var(--paper-2);}
+  header.top h1{font-family:var(--font-display); font-size:28px; letter-spacing:0.5px; margin:0; font-style:italic;}
+  header.top .tagline{font-family:var(--font-mono); font-size:12px; letter-spacing:0.5px; text-transform:uppercase; color:var(--ink-soft); margin-top:4px;}
+  .profile-switch{margin-top:10px; display:inline-flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:14px; color:var(--ink-soft); border:1px solid var(--rule); border-radius:20px; padding:5px 12px; cursor:pointer; background:var(--paper-2);}
   .profile-switch b{color:var(--ink);}
   .sync-dot{width:7px; height:7px; border-radius:50%; background:var(--ok); display:inline-block; margin-right:3px;}
   .sync-dot.busy{background:#C9A227; animation:pulse 1s infinite;}
@@ -42,57 +42,57 @@
   #gate-screen, #profile-screen{position:fixed; inset:0; background:var(--paper); z-index:100; display:flex; align-items:center; justify-content:center; padding:24px;}
   #gate-screen.hidden, #profile-screen.hidden{display:none;}
   .gate-box, .profile-box{max-width:380px; width:100%; text-align:center;}
-  .gate-box h1, .profile-box h1{font-family:var(--font-display); font-style:italic; font-size:30px; margin-bottom:6px;}
-  .gate-box p, .profile-box p{font-family:var(--font-mono); font-size:12px; color:var(--ink-soft); margin-bottom:24px; line-height:1.6;}
+  .gate-box h1, .profile-box h1{font-family:var(--font-display); font-style:italic; font-size:32px; margin-bottom:6px;}
+  .gate-box p, .profile-box p{font-family:var(--font-mono); font-size:14px; color:var(--ink-soft); margin-bottom:24px; line-height:1.6;}
   .profile-list{display:flex; flex-direction:column; gap:10px; margin-bottom:20px;}
   .profile-item{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 16px; border:1px solid var(--rule); border-radius:2px; background:#fff; cursor:pointer;}
-  .profile-item .name{font-size:16px; font-weight:600; text-align:left;}
+  .profile-item .name{font-size:18px; font-weight:600; text-align:left;}
   .profile-item .arrow{color:var(--stamp); font-family:var(--font-mono);}
   .profile-new{display:flex; gap:8px;}
   .profile-new input{flex:1;}
-  .alias-row{display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 0; border-bottom:1px dashed var(--rule); font-family:var(--font-mono); font-size:12px;}
+  .alias-row{display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 0; border-bottom:1px dashed var(--rule); font-family:var(--font-mono); font-size:14px;}
   .alias-row .alias-name{font-weight:700; font-family:var(--font-body);}
-  .alias-row .alias-email{color:var(--ink-soft); font-size:11px;}
-  .alias-row .alias-del{color:var(--stamp); cursor:pointer; font-size:16px;}
-  .gear-link{display:block; margin-top:18px; font-family:var(--font-mono); font-size:11px; color:var(--ink-soft); text-decoration:underline; cursor:pointer;}
+  .alias-row .alias-email{color:var(--ink-soft); font-size:13px;}
+  .alias-row .alias-del{color:var(--stamp); cursor:pointer; font-size:18px;}
+  .gear-link{display:block; margin-top:18px; font-family:var(--font-mono); font-size:13px; color:var(--ink-soft); text-decoration:underline; cursor:pointer;}
 
   .card{background:#fff; border:1px solid var(--rule); border-radius:2px; padding:16px; margin-bottom:14px; box-shadow:0 1px 0 rgba(0,0,0,0.03); text-align:left;}
-  .card h2{font-family:var(--font-display); font-style:italic; font-size:18px; margin:0 0 14px; border-bottom:1px dashed var(--rule); padding-bottom:8px;}
+  .card h2{font-family:var(--font-display); font-style:italic; font-size:20px; margin:0 0 14px; border-bottom:1px dashed var(--rule); padding-bottom:8px;}
 
   nav.tabs{position:fixed; bottom:0; left:0; right:0; background:var(--paper); border-top:1px solid var(--rule); display:flex; z-index:30; padding-bottom:env(safe-area-inset-bottom);}
-  nav.tabs button{flex:1; background:none; border:none; padding:12px 4px 10px; font-family:var(--font-mono); font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-soft); cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;}
-  nav.tabs button .icon{font-size:19px;}
+  nav.tabs button{flex:1; background:none; border:none; padding:12px 4px 10px; font-family:var(--font-mono); font-size:13px; letter-spacing:1px; text-transform:uppercase; color:var(--ink-soft); cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px;}
+  nav.tabs button .icon{font-size:21px;}
   nav.tabs button.active{color:var(--stamp); font-weight:700;}
   .view{display:none; padding:18px 0 20px;}
   .view.active{display:block;}
 
-  label{display:block; font-family:var(--font-mono); font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--ink-soft); margin-bottom:5px; margin-top:14px;}
+  label{display:block; font-family:var(--font-mono); font-size:13px; text-transform:uppercase; letter-spacing:1px; color:var(--ink-soft); margin-bottom:5px; margin-top:14px;}
   label:first-of-type{margin-top:0;}
-  input[type=text], input[type=number], input[type=date], input[type=password], select, textarea{width:100%; padding:10px 10px; border:1px solid var(--rule); border-radius:2px; font-size:16px; font-family:var(--font-body); background:var(--paper); color:var(--ink);}
+  input[type=text], input[type=number], input[type=date], input[type=password], select, textarea{width:100%; padding:10px 10px; border:1px solid var(--rule); border-radius:2px; font-size:18px; font-family:var(--font-body); background:var(--paper); color:var(--ink);}
   input[type=number]{font-family:var(--font-mono);}
   textarea{resize:vertical; min-height:44px;}
   .amount-row{display:flex; align-items:center; gap:8px;}
-  .amount-row span{font-family:var(--font-mono); font-size:18px; color:var(--ink-soft);}
+  .amount-row span{font-family:var(--font-mono); font-size:20px; color:var(--ink-soft);}
 
-  .btn{display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:13px 18px; border-radius:2px; border:1px solid var(--ink); font-family:var(--font-mono); font-size:13px; letter-spacing:1px; text-transform:uppercase; background:var(--ink); color:var(--paper); cursor:pointer; width:100%; margin-top:18px;}
+  .btn{display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:13px 18px; border-radius:2px; border:1px solid var(--ink); font-family:var(--font-mono); font-size:15px; letter-spacing:1px; text-transform:uppercase; background:var(--ink); color:var(--paper); cursor:pointer; width:100%; margin-top:18px;}
   .btn.secondary{background:var(--paper); color:var(--ink);}
   .btn.stamp{background:var(--stamp); border-color:var(--stamp); color:#fff;}
   .btn.google{background:#fff; color:#3c4043; border-color:#dadce0;}
-  .btn.small{width:auto; padding:9px 14px; margin-top:0; font-size:11px;}
+  .btn.small{width:auto; padding:9px 14px; margin-top:0; font-size:13px;}
   .btn:active{opacity:0.75;}
   .btn:disabled{opacity:0.5;}
   .btn-row{display:flex; gap:10px;}
   .btn-row .btn{margin-top:10px;}
 
-  .photo-picker{border:1px dashed var(--rule); border-radius:2px; padding:14px; text-align:center; color:var(--ink-soft); font-family:var(--font-mono); font-size:12px; cursor:pointer; background:var(--paper-2);}
+  .photo-picker{border:1px dashed var(--rule); border-radius:2px; padding:14px; text-align:center; color:var(--ink-soft); font-family:var(--font-mono); font-size:14px; cursor:pointer; background:var(--paper-2);}
   .photo-preview{width:100%; max-height:220px; object-fit:contain; display:block; margin-top:10px; border:1px solid var(--rule);}
   .photo-actions{display:flex; gap:8px; margin-top:8px;}
 
   .chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;}
-  .chip{padding:6px 12px; border:1px solid var(--rule); border-radius:20px; font-size:12px; font-family:var(--font-mono); background:var(--paper); cursor:pointer; color:var(--ink-soft);}
+  .chip{padding:6px 12px; border:1px solid var(--rule); border-radius:20px; font-size:14px; font-family:var(--font-mono); background:var(--paper); cursor:pointer; color:var(--ink-soft);}
   .chip.selected{background:var(--ink); color:var(--paper); border-color:var(--ink);}
 
-  #toast{position:fixed; bottom:96px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--ink); color:var(--paper); padding:10px 18px; border-radius:20px; font-family:var(--font-mono); font-size:12px; opacity:0; pointer-events:none; transition:all .25s ease; z-index:150; white-space:nowrap;}
+  #toast{position:fixed; bottom:96px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--ink); color:var(--paper); padding:10px 18px; border-radius:20px; font-family:var(--font-mono); font-size:14px; opacity:0; pointer-events:none; transition:all .25s ease; z-index:150; white-space:nowrap;}
   #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
 
   .receipt{background:#fff; border:1px solid var(--rule); position:relative; padding:6px 0; margin-bottom:16px;}
@@ -102,33 +102,33 @@
   .exp-row{display:flex; justify-content:space-between; align-items:center; gap:10px; padding:11px 16px; border-bottom:1px dashed var(--rule);}
   .exp-row:last-child{border-bottom:none;}
   .exp-main{flex:1; min-width:0;}
-  .exp-desc{font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-  .exp-meta{font-family:var(--font-mono); font-size:11px; color:var(--ink-soft); margin-top:2px;}
+  .exp-desc{font-size:16px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .exp-meta{font-family:var(--font-mono); font-size:13px; color:var(--ink-soft); margin-top:2px;}
   .exp-meta .cat{background:var(--stamp-soft); color:var(--stamp); padding:1px 6px; border-radius:8px; margin-right:6px;}
-  .exp-amount{font-family:var(--font-mono); font-size:15px; font-weight:700; white-space:nowrap;}
-  .exp-camera{font-size:13px; margin-left:6px; opacity:0.6;}
-  .empty{text-align:center; padding:40px 20px; color:var(--ink-soft); font-family:var(--font-mono); font-size:12px;}
-  .day-header{font-family:var(--font-mono); font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--ink-soft); margin:18px 0 6px 4px; display:flex; justify-content:space-between;}
+  .exp-amount{font-family:var(--font-mono); font-size:17px; font-weight:700; white-space:nowrap;}
+  .exp-camera{font-size:20px; margin-left:8px; opacity:1;}
+  .empty{text-align:center; padding:40px 20px; color:var(--ink-soft); font-family:var(--font-mono); font-size:14px;}
+  .day-header{font-family:var(--font-mono); font-size:13px; text-transform:uppercase; letter-spacing:1px; color:var(--ink-soft); margin:18px 0 6px 4px; display:flex; justify-content:space-between;}
 
   .period-pills{display:flex; gap:6px; margin-bottom:14px;}
-  .period-pills button{flex:1; padding:9px 4px; border:1px solid var(--rule); background:var(--paper); font-family:var(--font-mono); font-size:11px; text-transform:uppercase; border-radius:2px; cursor:pointer; color:var(--ink-soft);}
+  .period-pills button{flex:1; padding:9px 4px; border:1px solid var(--rule); background:var(--paper); font-family:var(--font-mono); font-size:13px; text-transform:uppercase; border-radius:2px; cursor:pointer; color:var(--ink-soft);}
   .period-pills button.active{background:var(--ink); color:var(--paper); border-color:var(--ink);}
   .custom-dates{display:none; gap:10px;}
   .custom-dates.show{display:flex;}
   .custom-dates > div{flex:1;}
 
   .total-line{display:flex; justify-content:space-between; align-items:baseline; padding:16px; border-top:2px solid var(--ink); margin-top:4px;}
-  .total-line .label{font-family:var(--font-mono); font-size:12px; text-transform:uppercase; letter-spacing:1px;}
-  .total-line .value{font-family:var(--font-mono); font-size:24px; font-weight:700;}
+  .total-line .label{font-family:var(--font-mono); font-size:14px; text-transform:uppercase; letter-spacing:1px;}
+  .total-line .value{font-family:var(--font-mono); font-size:26px; font-weight:700;}
   .cat-breakdown{margin-top:14px;}
-  .cat-breakdown-row{display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:12px; padding:5px 2px; border-bottom:1px dotted var(--rule);}
+  .cat-breakdown-row{display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:14px; padding:5px 2px; border-bottom:1px dotted var(--rule);}
 
   .modal-overlay{position:fixed; inset:0; background:rgba(20,20,15,0.6); z-index:60; display:none; align-items:flex-end; justify-content:center;}
   .modal-overlay.show{display:flex;}
   .modal{background:var(--paper); width:100%; max-width:520px; border-radius:10px 10px 0 0; padding:20px 16px calc(20px + env(safe-area-inset-bottom)); max-height:85vh; overflow-y:auto;}
   .modal-handle{width:36px; height:4px; background:var(--rule); border-radius:2px; margin:0 auto 14px;}
-  a.link{color:var(--stamp); font-family:var(--font-mono); font-size:12px; text-decoration:underline;}
-  .helptext{font-family:var(--font-mono); font-size:11px; color:var(--ink-soft); text-align:left; margin-top:8px; line-height:1.6;}
+  a.link{color:var(--stamp); font-family:var(--font-mono); font-size:14px; text-decoration:underline;}
+  .helptext{font-family:var(--font-mono); font-size:13px; color:var(--ink-soft); text-align:left; margin-top:8px; line-height:1.6;}
 
   @media print{
     body *{visibility:hidden;}
@@ -147,10 +147,10 @@
     <h1>Scontrino</h1>
     <p id="gate-text">Registro spese del beneficiario, salvato in una cartella "Scontrino App" nel tuo Google Drive: accessibile da qualunque dispositivo, utile per la rendicontazione.</p>
 
-    <div id="iframe-warning" style="display:none; background:var(--stamp-soft); color:var(--stamp); padding:10px 12px; border-radius:2px; font-family:var(--font-mono); font-size:11px; margin-bottom:16px; text-align:left; line-height:1.5;">
+    <div id="iframe-warning" style="display:none; background:var(--stamp-soft); color:var(--stamp); padding:10px 12px; border-radius:2px; font-family:var(--font-mono); font-size:13px; margin-bottom:16px; text-align:left; line-height:1.5;">
       ⚠️ Questa pagina è aperta dentro un'anteprima integrata: l'accesso a Google non funzionerà qui. Apri il link diretto del file nel browser (Chrome/Safari) a schermo intero.
     </div>
-    <div id="gate-autologin-msg" style="display:none; font-family:var(--font-mono); font-size:12px; color:var(--ink-soft); margin-bottom:10px;">
+    <div id="gate-autologin-msg" style="display:none; font-family:var(--font-mono); font-size:14px; color:var(--ink-soft); margin-bottom:10px;">
       Accesso in corso...
     </div>
 
@@ -822,7 +822,7 @@ function renderExpenseList(){
           <div class="exp-desc" style="${e.deleted ? 'text-decoration:line-through;' : ''}">${escapeHtml(e.desc)}</div>
           <div class="exp-meta">${e.deleted ? '<span class="cat" style="background:#e3e3e3; color:#666;">Eliminata</span>' : ''}${e.category ? '<span class="cat">'+escapeHtml(e.category)+'</span>' : ''}</div>
         </div>
-        <div class="exp-amount">${fmtEUR(e.amount)}${e.photoFileId ? '<span class="exp-camera">📎</span>' : ''}</div>
+        <div class="exp-amount">${fmtEUR(e.amount)}${e.photoFileId ? '<span class="exp-camera">📷</span>' : ''}</div>
       </div>`;
     });
     html += '</div>';
@@ -840,10 +840,10 @@ async function openExpenseDetail(id){
     : '<button class="btn secondary" id="btn-delete-expense">Elimina spesa</button>';
   document.getElementById('modal-content').innerHTML = `
     <h2 style="font-family:var(--font-display); font-style:italic; margin-top:0;">${escapeHtml(entry.desc)}</h2>
-    <div style="font-family:var(--font-mono); font-size:13px; color:var(--ink-soft); margin-bottom:10px;">
+    <div style="font-family:var(--font-mono); font-size:15px; color:var(--ink-soft); margin-bottom:10px;">
       ${fmtDateIt(entry.date)} ${entry.category ? '· '+escapeHtml(entry.category) : ''} ${entry.deleted ? '· <b style="color:var(--stamp);">eliminata</b>' : ''}
     </div>
-    <div style="font-family:var(--font-mono); font-size:28px; font-weight:700; margin-bottom:14px;">${fmtEUR(entry.amount)}</div>
+    <div style="font-family:var(--font-mono); font-size:30px; font-weight:700; margin-bottom:14px;">${fmtEUR(entry.amount)}</div>
     <div id="modal-photo-wrap">${entry.photoFileId ? '<div class="helptext">Caricamento foto...</div>' : ''}</div>
     ${actionBtn}
   `;
@@ -969,7 +969,7 @@ document.getElementById('btn-print').addEventListener('click', ()=>{
   document.getElementById('printArea').innerHTML = `
     <div style="font-family:Georgia,serif; padding:20px;">
       <h1 style="font-style:italic; border-bottom:2px solid #000; padding-bottom:10px;">Scontrino — ${escapeHtml(label)}</h1>
-      <table style="width:100%; border-collapse:collapse; font-family:Arial,sans-serif; font-size:13px; margin-top:16px;">
+      <table style="width:100%; border-collapse:collapse; font-family:Arial,sans-serif; font-size:15px; margin-top:16px;">
         <thead><tr>
           <th style="text-align:left; padding:6px 8px; border-bottom:2px solid #000;">Data</th>
           <th style="text-align:left; padding:6px 8px; border-bottom:2px solid #000;">Descrizione</th>
@@ -979,7 +979,7 @@ document.getElementById('btn-print').addEventListener('click', ()=>{
         <tbody>${rows || '<tr><td colspan="4" style="padding:10px; text-align:center;">Nessuna spesa</td></tr>'}</tbody>
       </table>
       <h2 style="text-align:right; margin-top:16px;">Totale: ${fmtEUR(total)}</h2>
-      ${catRows ? '<h3 style="margin-top:24px;">Per categoria</h3><table style="width:100%; font-family:Arial,sans-serif; font-size:13px;">'+catRows+'</table>' : ''}
+      ${catRows ? '<h3 style="margin-top:24px;">Per categoria</h3><table style="width:100%; font-family:Arial,sans-serif; font-size:15px;">'+catRows+'</table>' : ''}
     </div>`;
   window.print();
 });
