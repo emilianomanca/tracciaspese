@@ -84,7 +84,8 @@
   .btn-row{display:flex; gap:10px;}
   .btn-row .btn{margin-top:10px;}
 
-  .photo-picker{border:1px dashed var(--rule); border-radius:2px; padding:14px; text-align:center; color:var(--ink-soft); font-family:var(--font-mono); font-size:14px; cursor:pointer; background:var(--paper-2);}
+  .photo-picker{border:1px dashed var(--rule); border-radius:2px; padding:20px 14px; text-align:center; color:var(--ink-soft); font-family:var(--font-mono); font-size:14px; cursor:pointer; background:var(--paper-2);}
+  .photo-picker .cam-icon{display:block; font-size:56px; line-height:1; margin-bottom:10px;}
   .photo-preview{width:100%; max-height:220px; object-fit:contain; display:block; margin-top:10px; border:1px solid var(--rule);}
   .photo-actions{display:flex; gap:8px; margin-top:8px;}
 
@@ -214,7 +215,7 @@
       <label>Categoria (facoltativa)</label>
       <div class="chips" id="f-categories"></div>
       <label>Foto scontrino/fattura (facoltativa)</label>
-      <div class="photo-picker" id="photo-picker-area">📷 Tocca per scattare o scegliere una foto</div>
+      <div class="photo-picker" id="photo-picker-area"><span class="cam-icon">📷</span>Tocca per scattare o scegliere una foto</div>
       <input type="file" id="f-photo" accept="image/*" capture="environment" style="display:none;">
       <img id="photo-preview" class="photo-preview" style="display:none;">
       <div class="photo-actions" id="photo-actions" style="display:none;">
@@ -743,7 +744,7 @@ document.getElementById('f-photo').addEventListener('change', (e)=>{
         preview.src = URL.createObjectURL(blob);
         preview.style.display = 'block';
         document.getElementById('photo-actions').style.display = 'flex';
-        document.getElementById('photo-picker-area').textContent = '📷 Foto selezionata — tocca per cambiarla';
+        document.getElementById('photo-picker-area').innerHTML = '<span class="cam-icon">📷</span>Foto selezionata — tocca per cambiarla';
       }, 'image/jpeg', 0.78);
     };
     img.src = ev.target.result;
@@ -756,7 +757,7 @@ document.getElementById('btn-photo-remove').addEventListener('click', (e)=>{
   document.getElementById('photo-preview').style.display = 'none';
   document.getElementById('photo-actions').style.display = 'none';
   document.getElementById('f-photo').value = '';
-  document.getElementById('photo-picker-area').textContent = '📷 Tocca per scattare o scegliere una foto';
+  document.getElementById('photo-picker-area').innerHTML = '<span class="cam-icon">📷</span>Tocca per scattare o scegliere una foto';
 });
 
 // ---------- Save expense ----------
