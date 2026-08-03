@@ -224,7 +224,12 @@
     </div>
   </div>
 
-  <div class="view" id="view-spese"><div id="lista-spese"></div></div>
+  <div class="view" id="view-spese">
+    <label style="display:flex; align-items:center; gap:8px; margin:0 0 14px; cursor:pointer; text-transform:none; letter-spacing:0;">
+      <input type="checkbox" id="chk-show-deleted"> Mostra anche le spese eliminate
+    </label>
+    <div id="lista-spese"></div>
+  </div>
 
   <div class="view" id="view-report">
     <div class="card">
@@ -322,13 +327,20 @@ function getLastProfile(){ return lsGet('scontrino_last_profile') || ''; }
 function setLastProfile(name){ lsSet('scontrino_last_profile', name); }
 
 // ---------- Alias -> account Google ----------
+// NB: la lista alias è salvata in localStorage, quindi è specifica per questo dispositivo/browser:
+// ogni persona può tenere visibili solo gli alias che le interessano senza toccare gli altri dispositivi.
 const DEFAULT_ALIASES = [
-  { name: 'Paolo', email: 'paolo.manca9@gmail.com' },
-  { name: 'Emiliano', email: 'emiliano.manca@gmail.com' }
+  { name: 'Paolo', email: 'paolo.manca9@gmail.com', visible: true },
+  { name: 'Emiliano', email: 'emiliano.manca@gmail.com', visible: true }
 ];
 function getAliases(){
   const raw = lsGet('scontrino_aliases');
-  if(raw){ try{ return JSON.parse(raw); }catch(e){} }
+  if(raw){
+    try{
+      const list = JSON.parse(raw);
+      return list.map(a => ({ visible: true, ...a })); // retrocompatibilità con alias salvati prima del campo "visible"
+    }catch(e){}
+  }
   lsSet('scontrino_aliases', JSON.stringify(DEFAULT_ALIASES));
   return DEFAULT_ALIASES.slice();
 }
@@ -340,8 +352,11 @@ function setAliasGranted(email){ lsSet('scontrino_granted_' + email, '1'); }
 
 function renderAliasList(){
   const wrap = document.getElementById('alias-list');
-  const aliases = getAliases();
-  if(aliases.length === 0){ wrap.innerHTML = ''; return; }
+  const aliases = getAliases().filter(a => a.visible !== false);
+  if(aliases.length === 0){
+    wrap.innerHTML = '<div class="helptext">Nessun alias visibile su questo dispositivo — usa "Gestisci alias" per mostrarne uno.</div>';
+    return;
+  }
   wrap.innerHTML = aliases.map(a => `
     <div class="profile-item" data-email="${escapeHtml(a.email)}">
       <span class="name">${escapeHtml(a.name)}</span><span class="arrow">→</span>
@@ -356,9 +371,20 @@ function renderAliasManageList(){
   const aliases = getAliases();
   wrap.innerHTML = aliases.length ? aliases.map((a,i)=>`
     <div class="alias-row" data-index="${i}">
-      <div><div class="alias-name">${escapeHtml(a.name)}</div><div class="alias-email">${escapeHtml(a.email)}</div></div>
+      <label style="display:flex; align-items:center; gap:8px; flex:1;">
+        <input type="checkbox" class="alias-visible-toggle" data-index="${i}" ${a.visible !== false ? 'checked' : ''}>
+        <div><div class="alias-name">${escapeHtml(a.name)}</div><div class="alias-email">${escapeHtml(a.email)}</div></div>
+      </label>
       <span class="alias-del" data-index="${i}">✕</span>
     </div>`).join('') : '<div class="helptext">Nessun alias ancora configurato.</div>';
+  wrap.querySelectorAll('.alias-visible-toggle').forEach(el=>{
+    el.addEventListener('change', ()=>{
+      const aliases = getAliases();
+      aliases[parseInt(el.dataset.index,10)].visible = el.checked;
+      setAliases(aliases);
+      renderAliasList();
+    });
+  });
   wrap.querySelectorAll('.alias-del').forEach(el=>{
     el.addEventListener('click', ()=>{
       const aliases = getAliases();
@@ -385,7 +411,7 @@ document.getElementById('btn-add-alias').addEventListener('click', ()=>{
   const email = document.getElementById('new-alias-email').value.trim().toLowerCase();
   if(!name || !email || !email.includes('@')){ toast('Inserisci nome ed email validi'); return; }
   const aliases = getAliases();
-  aliases.push({name, email});
+  aliases.push({name, email, visible: true});
   setAliases(aliases);
   document.getElementById('new-alias-name').value = '';
   document.getElementById('new-alias-email').value = '';
@@ -744,7 +770,7 @@ document.getElementById('btn-save-expense').addEventListener('click', async ()=>
   const desc = document.getElementById('f-desc').value.trim() || (state.selectedCategory || 'Spesa');
   const id = 'e' + Date.now() + Math.random().toString(36).slice(2,7);
 
-  const entry = { id, date, amount: Math.round(amount*100)/100, desc, category: state.selectedCategory || null, photoFileId: null };
+  const entry = { id, date, amount: Math.round(amount*100)/100, desc, category: state.selectedCategory || null, photoFileId: null, deleted: false };
 
   const saveBtn = document.getElementById('btn-save-expense');
   saveBtn.disabled = true; saveBtn.textContent = 'Salvataggio...';
@@ -773,24 +799,28 @@ document.getElementById('btn-save-expense').addEventListener('click', async ()=>
 function fmtEUR(n){ return '€ ' + n.toLocaleString('it-IT', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 function fmtDateIt(dstr){ const d = new Date(dstr+'T00:00:00'); return d.toLocaleDateString('it-IT', {day:'2-digit', month:'short', year:'numeric'}); }
 
+document.getElementById('chk-show-deleted').addEventListener('change', renderExpenseList);
+
 function renderExpenseList(){
   const container = document.getElementById('lista-spese');
-  if(state.expenses.length === 0){
+  const showDeleted = document.getElementById('chk-show-deleted').checked;
+  const visible = state.expenses.filter(e => showDeleted || !e.deleted);
+  if(visible.length === 0){
     container.innerHTML = '<div class="empty">Nessuna spesa registrata ancora.<br>Vai su "Nuova" per aggiungerne una.</div>';
     return;
   }
-  const sorted = [...state.expenses].sort((a,b)=> b.date.localeCompare(a.date) || (b.id > a.id ? 1 : -1));
+  const sorted = [...visible].sort((a,b)=> b.date.localeCompare(a.date) || (b.id > a.id ? 1 : -1));
   const groups = {};
   sorted.forEach(e=>{ if(!groups[e.date]) groups[e.date] = []; groups[e.date].push(e); });
   let html = '';
   Object.keys(groups).sort().reverse().forEach(date=>{
-    const dayTotal = groups[date].reduce((s,e)=> s+e.amount, 0);
+    const dayTotal = groups[date].filter(e=>!e.deleted).reduce((s,e)=> s+e.amount, 0);
     html += `<div class="day-header"><span>${fmtDateIt(date)}</span><span>${fmtEUR(dayTotal)}</span></div><div class="receipt">`;
     groups[date].forEach(e=>{
-      html += `<div class="exp-row" data-id="${e.id}">
+      html += `<div class="exp-row" data-id="${e.id}" style="${e.deleted ? 'opacity:0.5;' : ''}">
         <div class="exp-main">
-          <div class="exp-desc">${escapeHtml(e.desc)}</div>
-          <div class="exp-meta">${e.category ? '<span class="cat">'+escapeHtml(e.category)+'</span>' : ''}</div>
+          <div class="exp-desc" style="${e.deleted ? 'text-decoration:line-through;' : ''}">${escapeHtml(e.desc)}</div>
+          <div class="exp-meta">${e.deleted ? '<span class="cat" style="background:#e3e3e3; color:#666;">Eliminata</span>' : ''}${e.category ? '<span class="cat">'+escapeHtml(e.category)+'</span>' : ''}</div>
         </div>
         <div class="exp-amount">${fmtEUR(e.amount)}${e.photoFileId ? '<span class="exp-camera">📎</span>' : ''}</div>
       </div>`;
@@ -805,14 +835,17 @@ function escapeHtml(s){ const d = document.createElement('div'); d.textContent =
 async function openExpenseDetail(id){
   const entry = state.expenses.find(e=>e.id===id);
   if(!entry) return;
+  const actionBtn = entry.deleted
+    ? '<button class="btn secondary" id="btn-restore-expense">↺ Ripristina spesa</button>'
+    : '<button class="btn secondary" id="btn-delete-expense">Elimina spesa</button>';
   document.getElementById('modal-content').innerHTML = `
     <h2 style="font-family:var(--font-display); font-style:italic; margin-top:0;">${escapeHtml(entry.desc)}</h2>
     <div style="font-family:var(--font-mono); font-size:13px; color:var(--ink-soft); margin-bottom:10px;">
-      ${fmtDateIt(entry.date)} ${entry.category ? '· '+escapeHtml(entry.category) : ''}
+      ${fmtDateIt(entry.date)} ${entry.category ? '· '+escapeHtml(entry.category) : ''} ${entry.deleted ? '· <b style="color:var(--stamp);">eliminata</b>' : ''}
     </div>
     <div style="font-family:var(--font-mono); font-size:28px; font-weight:700; margin-bottom:14px;">${fmtEUR(entry.amount)}</div>
     <div id="modal-photo-wrap">${entry.photoFileId ? '<div class="helptext">Caricamento foto...</div>' : ''}</div>
-    <button class="btn secondary" id="btn-delete-expense">Elimina spesa</button>
+    ${actionBtn}
   `;
   document.getElementById('modal-overlay').classList.add('show');
   if(entry.photoFileId){
@@ -820,16 +853,30 @@ async function openExpenseDetail(id){
       document.getElementById('modal-photo-wrap').innerHTML = `<img src="${dataUrl}" class="photo-preview">`;
     }).catch(()=>{ document.getElementById('modal-photo-wrap').innerHTML = '<div class="helptext">Impossibile caricare la foto.</div>'; });
   }
-  document.getElementById('btn-delete-expense').addEventListener('click', async ()=>{
-    if(confirm('Eliminare questa spesa?')){
-      state.expenses = state.expenses.filter(e=>e.id!==id);
+  const delBtn = document.getElementById('btn-delete-expense');
+  if(delBtn){
+    delBtn.addEventListener('click', async ()=>{
+      if(confirm('Eliminare questa spesa? Potrai comunque ripristinarla in seguito.')){
+        entry.deleted = true;
+        entry.deletedAt = new Date().toISOString();
+        await saveIndex();
+        document.getElementById('modal-overlay').classList.remove('show');
+        renderExpenseList();
+        toast('Spesa eliminata');
+      }
+    });
+  }
+  const restoreBtn = document.getElementById('btn-restore-expense');
+  if(restoreBtn){
+    restoreBtn.addEventListener('click', async ()=>{
+      entry.deleted = false;
+      delete entry.deletedAt;
       await saveIndex();
-      if(entry.photoFileId) await driveDeletePhoto(entry.photoFileId);
       document.getElementById('modal-overlay').classList.remove('show');
       renderExpenseList();
-      toast('Spesa eliminata');
-    }
-  });
+      toast('Spesa ripristinata ✓');
+    });
+  }
 }
 document.getElementById('modal-overlay').addEventListener('click', (e)=>{ if(e.target.id === 'modal-overlay') e.target.classList.remove('show'); });
 
@@ -869,7 +916,7 @@ document.getElementById('btn-anteprima').addEventListener('click', ()=>{
   const range = getRangeForPeriod();
   if(!range.from || !range.to){ toast('Seleziona entrambe le date'); return; }
   const catFilter = document.getElementById('r-category').value;
-  let filtered = state.expenses.filter(e=> e.date >= range.from && e.date <= range.to);
+  let filtered = state.expenses.filter(e=> !e.deleted && e.date >= range.from && e.date <= range.to);
   if(catFilter === '__none__'){
     filtered = filtered.filter(e=> !e.category);
   } else if(catFilter){
