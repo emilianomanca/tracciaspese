@@ -1068,7 +1068,33 @@ document.getElementById('btn-receipts-pdf').addEventListener('click', async ()=>
       columnStyles:{4:{halign:'right'}, 0:{cellWidth:8}}
     });
 
-    // Una pagina per ogni scontrino/ricevuta disponibile
+    // Scontrini piccoli: fino a 6 per pagina in griglia. Documenti "da pagina" (es. fatture): uno per pagina.
+    // Il riconoscimento è automatico in base alle proporzioni della foto: gli scontrini (tipico rotolo termico)
+    // sono molto più alti che larghi; i documenti tipo fattura hanno proporzioni simili a un foglio A4.
+    const GRID_COLS = 2, GRID_ROWS = 3;
+    const gapX = 6, gapY = 8, captionH = 9;
+    const cellW = (pageW - margin*2 - gapX*(GRID_COLS-1)) / GRID_COLS;
+    const cellH = (pageH - margin*2 - gapY*(GRID_ROWS-1)) / GRID_ROWS;
+    const gridSlots = [];
+    for(let r=0; r<GRID_ROWS; r++){
+      for(let c=0; c<GRID_COLS; c++){
+        gridSlots.push({
+          x: margin + c*(cellW+gapX),
+          y: margin + r*(cellH+gapY),
+          w: cellW, h: cellH
+        });
+      }
+    }
+    let gridIndex = GRID_COLS*GRID_ROWS; // forza l'apertura di una nuova pagina griglia al primo scontrino piccolo
+
+    function drawGridCaption(slot, e){
+      doc.setFont('helvetica','bold'); doc.setFontSize(8);
+      const line1 = `${fmtDateIt(e.date)} — ${e.desc}`;
+      doc.text(line1.length > 42 ? line1.slice(0,41)+'…' : line1, slot.x, slot.y + 4);
+      doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
+      doc.text(`${e.category || 'Senza categoria'} · ${fmtEUR(e.amount)}`, slot.x, slot.y + 8);
+    }
+
     const withoutPhoto = [];
     let done = 0;
     for(const e of items){
@@ -1084,22 +1110,46 @@ document.getElementById('btn-receipts-pdf').addEventListener('click', async ()=>
       }
       let dims;
       try{ dims = await loadImageDims(dataUrl); }catch(err){ dims = {w:1000,h:1400}; }
+      const aspect = dims.h / dims.w;
+      const isLargeDocument = aspect < 1.8; // proporzioni "da pagina" (es. fattura fotografata per intero)
 
-      doc.addPage();
-      doc.setFont('helvetica','bold'); doc.setFontSize(11);
-      doc.text(`${fmtDateIt(e.date)} — ${e.desc}`, margin, 15);
-      doc.setFont('helvetica','normal'); doc.setFontSize(10);
-      doc.text(`${e.category || 'Senza categoria'} · ${fmtEUR(e.amount)}`, margin, 21);
-      doc.setDrawColor(210,210,200);
-      doc.line(margin, 24, pageW-margin, 24);
+      if(isLargeDocument){
+        doc.addPage();
+        doc.setFont('helvetica','bold'); doc.setFontSize(11);
+        doc.text(`${fmtDateIt(e.date)} — ${e.desc}`, margin, 15);
+        doc.setFont('helvetica','normal'); doc.setFontSize(10);
+        doc.text(`${e.category || 'Senza categoria'} · ${fmtEUR(e.amount)}`, margin, 21);
+        doc.setDrawColor(210,210,200);
+        doc.line(margin, 24, pageW-margin, 24);
 
-      const availW = pageW - margin*2;
-      const availH = pageH - 30 - margin;
-      const ratio = Math.min(availW/dims.w, availH/dims.h);
-      const drawW = dims.w*ratio, drawH = dims.h*ratio;
-      const x = (pageW - drawW)/2;
-      const y = 30;
-      doc.addImage(dataUrl, 'JPEG', x, y, drawW, drawH);
+        const availW = pageW - margin*2;
+        const availH = pageH - 30 - margin;
+        const ratio = Math.min(availW/dims.w, availH/dims.h);
+        const drawW = dims.w*ratio, drawH = dims.h*ratio;
+        const x = (pageW - drawW)/2;
+        doc.addImage(dataUrl, 'JPEG', x, 30, drawW, drawH);
+
+        gridIndex = GRID_COLS*GRID_ROWS; // il prossimo scontrino piccolo riparte da una pagina griglia nuova
+      } else {
+        if(gridIndex >= GRID_COLS*GRID_ROWS){
+          doc.addPage();
+          gridIndex = 0;
+        }
+        const slot = gridSlots[gridIndex];
+        drawGridCaption(slot, e);
+
+        const imgY = slot.y + captionH;
+        const imgAvailH = slot.h - captionH;
+        const ratio = Math.min(slot.w/dims.w, imgAvailH/dims.h);
+        const drawW = dims.w*ratio, drawH = dims.h*ratio;
+        const x = slot.x + (slot.w - drawW)/2;
+        const y = imgY + (imgAvailH - drawH)/2;
+        doc.setDrawColor(220,220,210);
+        doc.rect(slot.x, imgY, slot.w, imgAvailH);
+        doc.addImage(dataUrl, 'JPEG', x, y, drawW, drawH);
+
+        gridIndex++;
+      }
     }
 
     if(withoutPhoto.length){
