@@ -785,27 +785,10 @@ async function tryCropDocument(img, workW, workH){
     if(corners && corners.topLeftCorner && corners.topRightCorner && corners.bottomLeftCorner && corners.bottomRightCorner){
       const imgArea = workW * workH;
       const ratio = quadArea(corners) / imgArea;
-
-      // Controllo 1: il rettangolo deve avere diagonali di lunghezza simile (segno di una forma
-      // regolare); se sono molto diverse, probabilmente non è il vero bordo del documento.
-      const dist0 = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
-      const diag1 = dist0(corners.topLeftCorner, corners.bottomRightCorner);
-      const diag2 = dist0(corners.topRightCorner, corners.bottomLeftCorner);
-      const diagRatio = Math.min(diag1,diag2) / Math.max(diag1,diag2);
-
-      // Controllo 2: il rettangolo deve coprire una parte sufficiente sia in larghezza che in
-      // altezza dell'inquadratura — evita di agganciare un riquadro/tabella interno al documento
-      // (più piccolo del foglio reale) invece del bordo vero e proprio.
-      const xs = [corners.topLeftCorner.x, corners.topRightCorner.x, corners.bottomLeftCorner.x, corners.bottomRightCorner.x];
-      const ys = [corners.topLeftCorner.y, corners.topRightCorner.y, corners.bottomLeftCorner.y, corners.bottomRightCorner.y];
-      const bboxWRatio = (Math.max(...xs) - Math.min(...xs)) / workW;
-      const bboxHRatio = (Math.max(...ys) - Math.min(...ys)) / workH;
-
-      console.log(`[Scontrino] Rilevamento documento: area=${(ratio*100).toFixed(1)}% diagonali=${(diagRatio*100).toFixed(1)}% copertura=${(bboxWRatio*100).toFixed(0)}%x${(bboxHRatio*100).toFixed(0)}%`);
-
-      const confident = ratio > 0.15 && ratio < 0.97 && diagRatio > 0.75 && bboxWRatio > 0.35 && bboxHRatio > 0.35;
-
-      if(confident){
+      console.log('[Scontrino] Rilevamento documento: area rilevata = ' + (ratio*100).toFixed(1) + '% dell\'inquadratura.');
+      // Accettiamo il ritaglio solo se il documento occupa una porzione plausibile dell'inquadratura:
+      // troppo piccolo o quasi tutta la foto sono entrambi segnali di rilevamento incerto.
+      if(ratio > 0.18 && ratio < 0.96){
         try{
           // I vertici sono stati calcolati sulla copia ridotta (workCanvas): li riportiamo alla scala
           // dell'immagine originale a piena risoluzione, che è quella che passiamo per il ritaglio.
