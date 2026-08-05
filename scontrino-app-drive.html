@@ -24,8 +24,8 @@
     try{ cv['onRuntimeInitialized'] = () => { window.__cvRuntimeReady = true; }; }catch(e){}
   }
 </script>
-<script async src="https://docs.opencv.org/4.9.0/opencv.js" onload="onOpenCvReady()"></script>
-<script async src="https://unpkg.com/jscanify@1.4.0/src/jscanify.min.js"></script>
+<script async src="https://docs.opencv.org/4.7.0/opencv.js" onload="onOpenCvReady()"></script>
+<script async src="https://cdnjs.cloudflare.com/ajax/libs/jscanify/1.4.0/jscanify.min.js"></script>
 <style>
   :root{
     --paper:#F7F4EC; --paper-2:#EFEADC; --ink:#20261F; --ink-soft:#5B6158;
@@ -765,8 +765,8 @@ function quadArea(c){
 // solo se il rilevamento è sufficientemente affidabile; altrimenti null (la foto resta intera).
 async function tryCropDocument(img, workW, workH){
   try{
-    const ok = await waitForScanner(5000);
-    if(!ok) return null;
+    const ok = await waitForScanner(15000);
+    if(!ok){ console.warn('[Scontrino] Rilevamento documento: libreria non pronta in tempo, foto lasciata intera.'); return null; }
 
     const workCanvas = document.createElement('canvas');
     workCanvas.width = workW; workCanvas.height = workH;
@@ -780,23 +780,29 @@ async function tryCropDocument(img, workW, workH){
       if(contour){
         corners = scanner.getCornerPoints(contour, mat);
       }
-    }catch(e){ contour = null; }
+    }catch(e){ console.warn('[Scontrino] Rilevamento documento: errore durante l\'analisi del contorno.', e); contour = null; }
 
     if(corners && corners.topLeftCorner && corners.topRightCorner && corners.bottomLeftCorner && corners.bottomRightCorner){
       const imgArea = workW * workH;
       const ratio = quadArea(corners) / imgArea;
+      console.log('[Scontrino] Rilevamento documento: area rilevata = ' + (ratio*100).toFixed(1) + '% dell\'inquadratura.');
       // Accettiamo il ritaglio solo se il documento occupa una porzione plausibile dell'inquadratura:
       // troppo piccolo o quasi tutta la foto sono entrambi segnali di rilevamento incerto.
       if(ratio > 0.18 && ratio < 0.96){
         try{
           result = scanner.extractPaper(img, workW, workH, corners);
-        }catch(e){ result = null; }
+        }catch(e){ console.warn('[Scontrino] Rilevamento documento: errore durante il ritaglio.', e); result = null; }
+      } else {
+        console.warn('[Scontrino] Rilevamento documento: area fuori dai margini di sicurezza, foto lasciata intera.');
       }
+    } else {
+      console.warn('[Scontrino] Rilevamento documento: nessun contorno affidabile trovato, foto lasciata intera.');
     }
     try{ mat.delete(); }catch(e){}
     try{ if(contour) contour.delete(); }catch(e){}
     return result;
   }catch(e){
+    console.warn('[Scontrino] Rilevamento documento: errore imprevisto, foto lasciata intera.', e);
     return null;
   }
 }
