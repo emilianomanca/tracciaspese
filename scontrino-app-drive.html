@@ -16,6 +16,16 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+  // Rilevamento automatico del documento nella foto (per il ritaglio): caricato in background,
+  // se non si carica in tempo o non identifica un documento con sicurezza, la foto resta semplicemente intera.
+  window.__cvRuntimeReady = false;
+  function onOpenCvReady(){
+    try{ cv['onRuntimeInitialized'] = () => { window.__cvRuntimeReady = true; }; }catch(e){}
+  }
+</script>
+<script async src="https://docs.opencv.org/4.9.0/opencv.js" onload="onOpenCvReady()"></script>
+<script async src="https://unpkg.com/jscanify@1.4.0/src/jscanify.min.js"></script>
 <style>
   :root{
     --paper:#F7F4EC; --paper-2:#EFEADC; --ink:#20261F; --ink-soft:#5B6158;
@@ -84,6 +94,9 @@
   .btn-row{display:flex; gap:10px;}
   .btn-row .btn{margin-top:10px;}
 
+  .photo-choice-row{display:flex; gap:10px;}
+  .photo-choice-row .photo-picker{flex:1; padding:16px 8px;}
+  .photo-choice-row .photo-picker .cam-icon{font-size:34px; margin-bottom:6px;}
   .photo-picker{border:1px dashed var(--rule); border-radius:2px; padding:20px 14px; text-align:center; color:var(--ink-soft); font-family:var(--font-mono); font-size:14px; cursor:pointer; background:var(--paper-2);}
   .photo-picker .cam-icon{display:block; font-size:56px; line-height:1; margin-bottom:10px;}
   .photo-preview{width:100%; max-height:220px; object-fit:contain; display:block; margin-top:10px; border:1px solid var(--rule);}
@@ -215,8 +228,13 @@
       <label>Categoria (facoltativa)</label>
       <div class="chips" id="f-categories"></div>
       <label>Foto scontrino/fattura (facoltativa)</label>
-      <div class="photo-picker" id="photo-picker-area"><span class="cam-icon">📷</span>Tocca per scattare o scegliere una foto</div>
-      <input type="file" id="f-photo" accept="image/*" capture="environment" style="display:none;">
+      <div class="photo-choice-row">
+        <div class="photo-picker" id="btn-photo-camera"><span class="cam-icon">📷</span>Scatta foto</div>
+        <div class="photo-picker" id="btn-photo-gallery"><span class="cam-icon">🖼️</span>Dalla galleria</div>
+      </div>
+      <div class="helptext" id="photo-status" style="display:none; text-align:center;"></div>
+      <input type="file" id="f-photo-camera" accept="image/*" capture="environment" style="display:none;">
+      <input type="file" id="f-photo-gallery" accept="image/*" style="display:none;">
       <img id="photo-preview" class="photo-preview" style="display:none;">
       <div class="photo-actions" id="photo-actions" style="display:none;">
         <button class="btn secondary small" id="btn-photo-remove" type="button">Rimuovi foto</button>
@@ -722,42 +740,125 @@ function renderReportCategorySelect(){
 }
 renderReportCategorySelect();
 
+// ---------- Rilevamento documento (ritaglio automatico, solo se sicuro) ----------
+function waitForScanner(timeoutMs){
+  return new Promise((resolve)=>{
+    const start = Date.now();
+    (function poll(){
+      if(window.__cvRuntimeReady && window.cv && window.jscanify){ resolve(true); return; }
+      if(Date.now() - start > timeoutMs){ resolve(false); return; }
+      setTimeout(poll, 150);
+    })();
+  });
+}
+function quadArea(c){
+  // Formula di Gauss (shoelace) sui 4 vertici rilevati
+  const pts = [c.topLeftCorner, c.topRightCorner, c.bottomRightCorner, c.bottomLeftCorner];
+  let area = 0;
+  for(let i=0;i<4;i++){
+    const p1 = pts[i], p2 = pts[(i+1)%4];
+    area += p1.x*p2.y - p2.x*p1.y;
+  }
+  return Math.abs(area/2);
+}
+// Prova a rilevare e ritagliare il documento nell'immagine. Restituisce un canvas ritagliato
+// solo se il rilevamento è sufficientemente affidabile; altrimenti null (la foto resta intera).
+async function tryCropDocument(img, workW, workH){
+  try{
+    const ok = await waitForScanner(5000);
+    if(!ok) return null;
+
+    const workCanvas = document.createElement('canvas');
+    workCanvas.width = workW; workCanvas.height = workH;
+    workCanvas.getContext('2d').drawImage(img, 0, 0, workW, workH);
+
+    const scanner = new window.jscanify();
+    const mat = cv.imread(workCanvas);
+    let contour = null, corners = null, result = null;
+    try{
+      contour = scanner.findPaperContour(mat);
+      if(contour){
+        corners = scanner.getCornerPoints(contour, mat);
+      }
+    }catch(e){ contour = null; }
+
+    if(corners && corners.topLeftCorner && corners.topRightCorner && corners.bottomLeftCorner && corners.bottomRightCorner){
+      const imgArea = workW * workH;
+      const ratio = quadArea(corners) / imgArea;
+      // Accettiamo il ritaglio solo se il documento occupa una porzione plausibile dell'inquadratura:
+      // troppo piccolo o quasi tutta la foto sono entrambi segnali di rilevamento incerto.
+      if(ratio > 0.18 && ratio < 0.96){
+        try{
+          result = scanner.extractPaper(img, workW, workH, corners);
+        }catch(e){ result = null; }
+      }
+    }
+    try{ mat.delete(); }catch(e){}
+    try{ if(contour) contour.delete(); }catch(e){}
+    return result;
+  }catch(e){
+    return null;
+  }
+}
+
 // ---------- Photo picker ----------
-document.getElementById('photo-picker-area').addEventListener('click', ()=> document.getElementById('f-photo').click());
-document.getElementById('f-photo').addEventListener('change', (e)=>{
-  const file = e.target.files[0];
+document.getElementById('btn-photo-camera').addEventListener('click', ()=> document.getElementById('f-photo-camera').click());
+document.getElementById('btn-photo-gallery').addEventListener('click', ()=> document.getElementById('f-photo-gallery').click());
+
+function handlePhotoFile(file){
   if(!file) return;
+  const statusEl = document.getElementById('photo-status');
+  statusEl.style.display = 'block';
+  statusEl.textContent = '🔍 Analisi del documento...';
   const reader = new FileReader();
   reader.onload = (ev)=>{
     const img = new Image();
-    img.onload = ()=>{
+    img.onload = async ()=>{
+      // Fase 1: prova il rilevamento e ritaglio automatico su una copia di lavoro (più leggera per l'analisi).
+      // Vale sia per le foto scattate ora sia per quelle scelte dalla galleria: la logica è identica.
+      const workMax = 1600;
+      let ww = img.width, wh = img.height;
+      if(ww > wh && ww > workMax){ wh = wh*workMax/ww; ww = workMax; }
+      else if(wh > workMax){ ww = ww*workMax/wh; wh = workMax; }
+      const cropped = await tryCropDocument(img, Math.round(ww), Math.round(wh));
+
+      // Fase 2: ridimensiona/comprimi per il salvataggio, partendo dal ritaglio se disponibile, altrimenti dalla foto intera
+      const source = cropped || img;
+      const srcW = cropped ? cropped.width : img.width;
+      const srcH = cropped ? cropped.height : img.height;
       const maxDim = 1400;
-      let w = img.width, h = img.height;
+      let w = srcW, h = srcH;
       if(w > h && w > maxDim){ h = h*maxDim/w; w = maxDim; }
       else if(h > maxDim){ w = w*maxDim/h; h = maxDim; }
       const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.getContext('2d').drawImage(source, 0, 0, w, h);
       canvas.toBlob((blob)=>{
         state.currentPhotoBlob = blob;
         const preview = document.getElementById('photo-preview');
         preview.src = URL.createObjectURL(blob);
         preview.style.display = 'block';
         document.getElementById('photo-actions').style.display = 'flex';
-        document.getElementById('photo-picker-area').innerHTML = '<span class="cam-icon">📷</span>Foto selezionata — tocca per cambiarla';
+        statusEl.style.display = 'none';
+        toast(cropped ? '📄 Documento rilevato e ritagliato' : 'Foto aggiunta ✓');
       }, 'image/jpeg', 0.78);
     };
     img.src = ev.target.result;
   };
   reader.readAsDataURL(file);
-});
+}
+
+document.getElementById('f-photo-camera').addEventListener('change', (e)=>{ handlePhotoFile(e.target.files[0]); });
+document.getElementById('f-photo-gallery').addEventListener('change', (e)=>{ handlePhotoFile(e.target.files[0]); });
+
 document.getElementById('btn-photo-remove').addEventListener('click', (e)=>{
   e.stopPropagation();
   state.currentPhotoBlob = null;
   document.getElementById('photo-preview').style.display = 'none';
   document.getElementById('photo-actions').style.display = 'none';
-  document.getElementById('f-photo').value = '';
-  document.getElementById('photo-picker-area').innerHTML = '<span class="cam-icon">📷</span>Tocca per scattare o scegliere una foto';
+  document.getElementById('f-photo-camera').value = '';
+  document.getElementById('f-photo-gallery').value = '';
+  document.getElementById('photo-status').style.display = 'none';
 });
 
 // ---------- Save expense ----------
