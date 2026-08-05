@@ -790,7 +790,36 @@ async function tryCropDocument(img, workW, workH){
       // troppo piccolo o quasi tutta la foto sono entrambi segnali di rilevamento incerto.
       if(ratio > 0.18 && ratio < 0.96){
         try{
-          result = scanner.extractPaper(img, workW, workH, corners);
+          // I vertici sono stati calcolati sulla copia ridotta (workCanvas): li riportiamo alla scala
+          // dell'immagine originale a piena risoluzione, che è quella che passiamo per il ritaglio.
+          const scaleX = img.naturalWidth ? img.naturalWidth / workW : 1;
+          const scaleY = img.naturalHeight ? img.naturalHeight / workH : 1;
+          const scalePt = p => ({ x: p.x * scaleX, y: p.y * scaleY });
+          const fullCorners = {
+            topLeftCorner: scalePt(corners.topLeftCorner),
+            topRightCorner: scalePt(corners.topRightCorner),
+            bottomLeftCorner: scalePt(corners.bottomLeftCorner),
+            bottomRightCorner: scalePt(corners.bottomRightCorner)
+          };
+          // Le dimensioni di output seguono le proporzioni reali del documento rilevato
+          // (lato più lungo tra alto/basso per la larghezza, tra sinistra/destra per l'altezza),
+          // invece di forzare le proporzioni della foto originale: è questo che evitava lo schiacciamento.
+          const dist = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
+          let targetW = Math.round(Math.max(
+            dist(fullCorners.topLeftCorner, fullCorners.topRightCorner),
+            dist(fullCorners.bottomLeftCorner, fullCorners.bottomRightCorner)
+          ));
+          let targetH = Math.round(Math.max(
+            dist(fullCorners.topLeftCorner, fullCorners.bottomLeftCorner),
+            dist(fullCorners.topRightCorner, fullCorners.bottomRightCorner)
+          ));
+          // Limiti di sicurezza: evitiamo dimensioni assurde o troppo piccole
+          const maxSide = 2000;
+          const scaleDown = Math.min(1, maxSide / Math.max(targetW, targetH));
+          targetW = Math.max(50, Math.round(targetW * scaleDown));
+          targetH = Math.max(50, Math.round(targetH * scaleDown));
+
+          result = scanner.extractPaper(img, targetW, targetH, fullCorners);
         }catch(e){ console.warn('[Scontrino] Rilevamento documento: errore durante il ritaglio.', e); result = null; }
       } else {
         console.warn('[Scontrino] Rilevamento documento: area fuori dai margini di sicurezza, foto lasciata intera.');
