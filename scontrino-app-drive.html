@@ -16,6 +16,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script>
   // Rilevamento automatico del documento nella foto (per il ritaglio): caricato in background,
   // se non si carica in tempo o non identifica un documento con sicurezza, la foto resta semplicemente intera.
@@ -94,9 +95,9 @@
   .btn-row{display:flex; gap:10px;}
   .btn-row .btn{margin-top:10px;}
 
-  .photo-choice-row{display:flex; gap:10px;}
-  .photo-choice-row .photo-picker{flex:1; padding:16px 8px;}
-  .photo-choice-row .photo-picker .cam-icon{font-size:34px; margin-bottom:6px;}
+  .photo-choice-row{display:flex; gap:8px;}
+  .photo-choice-row .photo-picker{flex:1; padding:14px 4px;}
+  .photo-choice-row .photo-picker .cam-icon{font-size:28px; margin-bottom:5px;}
   .photo-picker{border:1px dashed var(--rule); border-radius:2px; padding:20px 14px; text-align:center; color:var(--ink-soft); font-family:var(--font-mono); font-size:14px; cursor:pointer; background:var(--paper-2);}
   .photo-picker .cam-icon{display:block; font-size:56px; line-height:1; margin-bottom:10px;}
   .photo-preview{width:100%; max-height:220px; object-fit:contain; display:block; margin-top:10px; border:1px solid var(--rule);}
@@ -234,11 +235,13 @@
       <label>Giustificativo: scontrino, ricevuta o fattura (facoltativo)</label>
       <div class="photo-choice-row">
         <div class="photo-picker" id="btn-photo-camera"><span class="cam-icon">📷</span>Scatta foto</div>
-        <div class="photo-picker" id="btn-photo-gallery"><span class="cam-icon">🖼️</span>Galleria / PDF</div>
+        <div class="photo-picker" id="btn-photo-gallery"><span class="cam-icon">🖼️</span>Galleria</div>
+        <div class="photo-picker" id="btn-photo-file"><span class="cam-icon">📄</span>File PDF</div>
       </div>
       <div class="helptext" id="photo-status" style="display:none; text-align:center;"></div>
       <input type="file" id="f-photo-camera" accept="image/*" capture="environment" style="display:none;">
-      <input type="file" id="f-photo-gallery" accept="image/*,application/pdf" style="display:none;">
+      <input type="file" id="f-photo-gallery" accept="image/*" style="display:none;">
+      <input type="file" id="f-photo-file" accept="application/pdf" style="display:none;">
       <img id="photo-preview" class="photo-preview" style="display:none;">
       <div class="pdf-preview" id="pdf-preview" style="display:none;">
         <span class="pdf-preview-icon">📄</span>
@@ -313,7 +316,8 @@
   </div>
 </div>
 <input type="file" id="f-attach-camera" accept="image/*" capture="environment" style="display:none;">
-<input type="file" id="f-attach-gallery" accept="image/*,application/pdf" style="display:none;">
+<input type="file" id="f-attach-gallery" accept="image/*" style="display:none;">
+<input type="file" id="f-attach-file" accept="application/pdf" style="display:none;">
 
 <div id="printArea"></div>
 
@@ -321,7 +325,7 @@
 (function(){
 
 const SCOPES = "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email";
-const CATEGORIES = ["Alimentari","Carburante","Casa","Salute","Bollette","Abbigliamento","Tasse","Badante","RSA","Altro"];
+const CATEGORIES = ["Alimentari","Carburante","Casa","Salute","Bollette","Abbigliamento","Tasse","Badante","RSA","Finanziamenti","Altro"];
 
 let state = {
   expenses: [], currentPhotoBlob: null, selectedCategory: null,
@@ -627,6 +631,10 @@ async function driveGetPhotoDataUrl(fileId){
     reader.readAsDataURL(blob);
   });
 }
+async function driveGetFileArrayBuffer(fileId){
+  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+  return await res.arrayBuffer();
+}
 async function driveDeletePhoto(fileId){
   try{ await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {method:'DELETE'}); }catch(e){}
 }
@@ -852,6 +860,7 @@ async function tryCropDocument(img, workW, workH){
 // ---------- Photo/PDF picker ----------
 document.getElementById('btn-photo-camera').addEventListener('click', ()=> document.getElementById('f-photo-camera').click());
 document.getElementById('btn-photo-gallery').addEventListener('click', ()=> document.getElementById('f-photo-gallery').click());
+document.getElementById('btn-photo-file').addEventListener('click', ()=> document.getElementById('f-photo-file').click());
 
 function fmtBytes(n){
   if(n < 1024) return n + ' B';
@@ -933,6 +942,7 @@ function handlePhotoFile(file){
 
 document.getElementById('f-photo-camera').addEventListener('change', (e)=>{ handlePhotoFile(e.target.files[0]); });
 document.getElementById('f-photo-gallery').addEventListener('change', (e)=>{ handlePhotoFile(e.target.files[0]); });
+document.getElementById('f-photo-file').addEventListener('change', (e)=>{ handlePhotoFile(e.target.files[0]); });
 
 document.getElementById('btn-photo-remove').addEventListener('click', (e)=>{
   e.stopPropagation();
@@ -944,6 +954,7 @@ document.getElementById('btn-photo-remove').addEventListener('click', (e)=>{
   document.getElementById('photo-actions').style.display = 'none';
   document.getElementById('f-photo-camera').value = '';
   document.getElementById('f-photo-gallery').value = '';
+  document.getElementById('f-photo-file').value = '';
   document.getElementById('photo-status').style.display = 'none';
 });
 
@@ -1034,8 +1045,9 @@ async function openExpenseDetail(id){
   const attachSection = (!entry.photoFileId && !entry.deleted) ? `
     <div class="helptext" style="margin-bottom:6px;">Nessun giustificativo allegato — te lo sei dimenticato in fase di inserimento?</div>
     <div class="photo-choice-row" style="margin-bottom:10px;">
-      <div class="photo-picker" id="btn-attach-camera" style="padding:12px 8px;"><span class="cam-icon" style="font-size:26px; margin-bottom:4px;">📷</span>Scatta foto</div>
-      <div class="photo-picker" id="btn-attach-gallery" style="padding:12px 8px;"><span class="cam-icon" style="font-size:26px; margin-bottom:4px;">🖼️</span>Galleria / PDF</div>
+      <div class="photo-picker" id="btn-attach-camera" style="padding:10px 4px;"><span class="cam-icon" style="font-size:22px; margin-bottom:4px;">📷</span>Scatta foto</div>
+      <div class="photo-picker" id="btn-attach-gallery" style="padding:10px 4px;"><span class="cam-icon" style="font-size:22px; margin-bottom:4px;">🖼️</span>Galleria</div>
+      <div class="photo-picker" id="btn-attach-file" style="padding:10px 4px;"><span class="cam-icon" style="font-size:22px; margin-bottom:4px;">📄</span>File PDF</div>
     </div>
     <div class="helptext" id="attach-status" style="display:none; text-align:center; margin-bottom:10px;"></div>
   ` : '';
@@ -1069,8 +1081,10 @@ async function openExpenseDetail(id){
 
   const attachCameraBtn = document.getElementById('btn-attach-camera');
   const attachGalleryBtn = document.getElementById('btn-attach-gallery');
+  const attachFileBtn = document.getElementById('btn-attach-file');
   if(attachCameraBtn) attachCameraBtn.addEventListener('click', ()=>{ state.attachTargetId = id; document.getElementById('f-attach-camera').click(); });
   if(attachGalleryBtn) attachGalleryBtn.addEventListener('click', ()=>{ state.attachTargetId = id; document.getElementById('f-attach-gallery').click(); });
+  if(attachFileBtn) attachFileBtn.addEventListener('click', ()=>{ state.attachTargetId = id; document.getElementById('f-attach-file').click(); });
 
   const delBtn = document.getElementById('btn-delete-expense');
   if(delBtn){
@@ -1130,6 +1144,7 @@ async function attachFileToExpense(file){
 }
 document.getElementById('f-attach-camera').addEventListener('change', (e)=>{ attachFileToExpense(e.target.files[0]); e.target.value=''; });
 document.getElementById('f-attach-gallery').addEventListener('change', (e)=>{ attachFileToExpense(e.target.files[0]); e.target.value=''; });
+document.getElementById('f-attach-file').addEventListener('change', (e)=>{ attachFileToExpense(e.target.files[0]); e.target.value=''; });
 
 
 // ---------- Report ----------
@@ -1405,23 +1420,6 @@ document.getElementById('btn-receipts-pdf').addEventListener('click', async ()=>
       }
     }
 
-    if(pdfAttachments.length){
-      doc.addPage();
-      doc.setFont('times','italic'); doc.setFontSize(14);
-      doc.text('Spese con giustificativo in formato PDF', margin, 18);
-      doc.setFont('helvetica','normal'); doc.setFontSize(8);
-      doc.text('Questi allegati sono file PDF (es. fatture) e non vengono uniti automaticamente in questo documento.', margin, 24);
-      doc.text('Sono disponibili singolarmente nella cartella "foto" del profilo, su Google Drive.', margin, 28);
-      doc.autoTable({
-        startY: 33,
-        head:[['Data','Descrizione','Categoria','Importo']],
-        body: pdfAttachments.map(e=>[fmtDateIt(e.date), e.desc, e.category||'—', fmtEUR(e.amount)]),
-        styles:{fontSize:9},
-        headStyles:{fillColor:[32,38,31]},
-        columnStyles:{3:{halign:'right'}}
-      });
-    }
-
     if(withoutPhoto.length){
       doc.addPage();
       doc.setFont('times','italic'); doc.setFontSize(14);
@@ -1436,7 +1434,65 @@ document.getElementById('btn-receipts-pdf').addEventListener('click', async ()=>
       });
     }
 
-    doc.save('giustificativi_' + state.reportData.from + '_' + state.reportData.to + '.pdf');
+    // Unione dei PDF originali (es. fatture) nel documento finale: le pagine vere e proprie
+    // vengono inserite in coda, precedute da una scheda con i dati della spesa corrispondente.
+    let finalBytes = doc.output('arraybuffer');
+    const failedPdfs = [];
+    if(pdfAttachments.length && window.PDFLib){
+      progress.textContent = 'Unione dei PDF allegati...';
+      try{
+        const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
+        const mergedDoc = await PDFDocument.load(finalBytes);
+        const font = await mergedDoc.embedFont(StandardFonts.HelveticaBold);
+        const fontN = await mergedDoc.embedFont(StandardFonts.Helvetica);
+
+        for(const e of pdfAttachments){
+          try{
+            const srcBytes = await driveGetFileArrayBuffer(e.photoFileId);
+            const srcDoc = await PDFDocument.load(srcBytes);
+
+            // Scheda separatrice con i dati della spesa, prima delle pagine del PDF originale
+            const sep = mergedDoc.addPage([595.28, 841.89]); // A4 in punti
+            sep.drawText('Allegato PDF', { x: 40, y: 780, size: 16, font, color: rgb(0.13,0.15,0.12) });
+            sep.drawText(`${fmtDateIt(e.date)} — ${e.desc}`, { x: 40, y: 750, size: 12, font, color: rgb(0.13,0.15,0.12) });
+            sep.drawText(`${e.category || 'Senza categoria'} · ${fmtEUR(e.amount)}`, { x: 40, y: 730, size: 11, font: fontN, color: rgb(0.35,0.38,0.34) });
+            sep.drawText('Le pagine originali del documento seguono questa scheda.', { x: 40, y: 705, size: 9, font: fontN, color: rgb(0.35,0.38,0.34) });
+
+            const copiedPages = await mergedDoc.copyPages(srcDoc, srcDoc.getPageIndices());
+            copiedPages.forEach(p => mergedDoc.addPage(p));
+          }catch(err){
+            console.warn('[Scontrino] Impossibile unire il PDF della spesa: ' + e.desc, err);
+            failedPdfs.push(e);
+          }
+        }
+
+        if(failedPdfs.length){
+          const fp = mergedDoc.addPage([595.28, 841.89]);
+          fp.drawText('PDF non uniti (errore nella lettura del file)', { x: 40, y: 780, size: 14, font, color: rgb(0.69,0.26,0.16) });
+          let y = 750;
+          failedPdfs.forEach(e=>{
+            fp.drawText(`${fmtDateIt(e.date)} — ${e.desc} — ${fmtEUR(e.amount)}`, { x: 40, y, size: 9, font: fontN, color: rgb(0.13,0.15,0.12) });
+            y -= 16;
+          });
+          fp.drawText('Questi allegati restano comunque disponibili nella cartella "foto" del profilo su Google Drive.', { x: 40, y: y-6, size: 8, font: fontN, color: rgb(0.35,0.38,0.34) });
+        }
+
+        finalBytes = await mergedDoc.save();
+      }catch(err){
+        console.warn('[Scontrino] Errore generale nell\'unione dei PDF, allegati non inclusi.', err);
+      }
+    }
+
+    const blob = new Blob([finalBytes], {type:'application/pdf'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'giustificativi_' + state.reportData.from + '_' + state.reportData.to + '.pdf';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(()=> URL.revokeObjectURL(url), 5000);
+
     toast('PDF giustificativi pronto');
   }catch(err){
     toast('Errore nella creazione del PDF');
