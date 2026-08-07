@@ -100,6 +100,10 @@
   .photo-picker{border:1px dashed var(--rule); border-radius:2px; padding:20px 14px; text-align:center; color:var(--ink-soft); font-family:var(--font-mono); font-size:14px; cursor:pointer; background:var(--paper-2);}
   .photo-picker .cam-icon{display:block; font-size:56px; line-height:1; margin-bottom:10px;}
   .photo-preview{width:100%; max-height:220px; object-fit:contain; display:block; margin-top:10px; border:1px solid var(--rule);}
+  .pdf-preview{display:flex; align-items:center; gap:12px; margin-top:10px; padding:14px; border:1px solid var(--rule); background:#fff;}
+  .pdf-preview-icon{font-size:34px;}
+  .pdf-preview-name{font-weight:700; font-size:14px; word-break:break-all;}
+  .pdf-preview-size{font-family:var(--font-mono); font-size:11px; color:var(--ink-soft); margin-top:2px;}
   .photo-actions{display:flex; gap:8px; margin-top:8px;}
 
   .chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;}
@@ -227,17 +231,24 @@
       <input type="date" id="f-date">
       <label>Categoria (facoltativa)</label>
       <div class="chips" id="f-categories"></div>
-      <label>Foto scontrino/fattura (facoltativa)</label>
+      <label>Giustificativo: scontrino, ricevuta o fattura (facoltativo)</label>
       <div class="photo-choice-row">
         <div class="photo-picker" id="btn-photo-camera"><span class="cam-icon">📷</span>Scatta foto</div>
-        <div class="photo-picker" id="btn-photo-gallery"><span class="cam-icon">🖼️</span>Dalla galleria</div>
+        <div class="photo-picker" id="btn-photo-gallery"><span class="cam-icon">🖼️</span>Galleria / PDF</div>
       </div>
       <div class="helptext" id="photo-status" style="display:none; text-align:center;"></div>
       <input type="file" id="f-photo-camera" accept="image/*" capture="environment" style="display:none;">
-      <input type="file" id="f-photo-gallery" accept="image/*" style="display:none;">
+      <input type="file" id="f-photo-gallery" accept="image/*,application/pdf" style="display:none;">
       <img id="photo-preview" class="photo-preview" style="display:none;">
+      <div class="pdf-preview" id="pdf-preview" style="display:none;">
+        <span class="pdf-preview-icon">📄</span>
+        <div class="pdf-preview-info">
+          <div class="pdf-preview-name" id="pdf-preview-name">documento.pdf</div>
+          <div class="pdf-preview-size" id="pdf-preview-size"></div>
+        </div>
+      </div>
       <div class="photo-actions" id="photo-actions" style="display:none;">
-        <button class="btn secondary small" id="btn-photo-remove" type="button">Rimuovi foto</button>
+        <button class="btn secondary small" id="btn-photo-remove" type="button">Rimuovi allegato</button>
       </div>
       <button class="btn stamp" id="btn-save-expense">✓ Registra spesa</button>
     </div>
@@ -301,6 +312,8 @@
     <div id="modal-content"></div>
   </div>
 </div>
+<input type="file" id="f-attach-camera" accept="image/*" capture="environment" style="display:none;">
+<input type="file" id="f-attach-gallery" accept="image/*,application/pdf" style="display:none;">
 
 <div id="printArea"></div>
 
@@ -594,14 +607,14 @@ async function driveReadText(fileId){
   const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
   return await res.text();
 }
-async function driveUploadPhoto(name, parentId, blob){
+async function driveUploadFile(name, parentId, blob, mimeType){
   const res = await driveFetch('https://www.googleapis.com/drive/v3/files', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({name, parents:[parentId]})
   });
   const created = await res.json();
   await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${created.id}?uploadType=media`, {
-    method:'PATCH', headers:{'Content-Type':'image/jpeg'}, body: blob
+    method:'PATCH', headers:{'Content-Type':mimeType}, body: blob
   });
   return created.id;
 }
@@ -836,51 +849,86 @@ async function tryCropDocument(img, workW, workH){
   }
 }
 
-// ---------- Photo picker ----------
+// ---------- Photo/PDF picker ----------
 document.getElementById('btn-photo-camera').addEventListener('click', ()=> document.getElementById('f-photo-camera').click());
 document.getElementById('btn-photo-gallery').addEventListener('click', ()=> document.getElementById('f-photo-gallery').click());
 
+function fmtBytes(n){
+  if(n < 1024) return n + ' B';
+  if(n < 1024*1024) return (n/1024).toFixed(0) + ' KB';
+  return (n/(1024*1024)).toFixed(1) + ' MB';
+}
+
+function showPdfPreview(file){
+  state.currentPhotoBlob = file;
+  state.currentAttachmentType = 'pdf';
+  state.currentAttachmentName = file.name;
+  document.getElementById('photo-preview').style.display = 'none';
+  const pdfPrev = document.getElementById('pdf-preview');
+  document.getElementById('pdf-preview-name').textContent = file.name;
+  document.getElementById('pdf-preview-size').textContent = fmtBytes(file.size);
+  pdfPrev.style.display = 'flex';
+  document.getElementById('photo-actions').style.display = 'flex';
+  toast('PDF allegato ✓');
+}
+
+// Elabora un file immagine: prova il rilevamento/ritaglio del documento, poi ridimensiona e comprime.
+// Riusata sia dal form "Nuova spesa" sia dall'aggiunta di un giustificativo dimenticato dalla scheda "Spese".
+function processImageToBlob(file){
+  return new Promise((resolve)=>{
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      const img = new Image();
+      img.onload = async ()=>{
+        const workMax = 1600;
+        let ww = img.width, wh = img.height;
+        if(ww > wh && ww > workMax){ wh = wh*workMax/ww; ww = workMax; }
+        else if(wh > workMax){ ww = ww*workMax/wh; wh = workMax; }
+        const cropped = await tryCropDocument(img, Math.round(ww), Math.round(wh));
+
+        const source = cropped || img;
+        const srcW = cropped ? cropped.width : img.width;
+        const srcH = cropped ? cropped.height : img.height;
+        const maxDim = 1400;
+        let w = srcW, h = srcH;
+        if(w > h && w > maxDim){ h = h*maxDim/w; w = maxDim; }
+        else if(h > maxDim){ w = w*maxDim/h; h = maxDim; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(source, 0, 0, w, h);
+        canvas.toBlob((blob)=>{ resolve({ blob, cropped: !!cropped }); }, 'image/jpeg', 0.78);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function handlePhotoFile(file){
   if(!file) return;
+
+  // Un PDF non passa dall'analisi immagine/ritaglio: viene allegato così com'è
+  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+  if(isPdf){
+    showPdfPreview(file);
+    return;
+  }
+
+  state.currentAttachmentType = 'image';
+  state.currentAttachmentName = null;
   const statusEl = document.getElementById('photo-status');
   statusEl.style.display = 'block';
   statusEl.textContent = '🔍 Analisi del documento...';
-  const reader = new FileReader();
-  reader.onload = (ev)=>{
-    const img = new Image();
-    img.onload = async ()=>{
-      // Fase 1: prova il rilevamento e ritaglio automatico su una copia di lavoro (più leggera per l'analisi).
-      // Vale sia per le foto scattate ora sia per quelle scelte dalla galleria: la logica è identica.
-      const workMax = 1600;
-      let ww = img.width, wh = img.height;
-      if(ww > wh && ww > workMax){ wh = wh*workMax/ww; ww = workMax; }
-      else if(wh > workMax){ ww = ww*workMax/wh; wh = workMax; }
-      const cropped = await tryCropDocument(img, Math.round(ww), Math.round(wh));
-
-      // Fase 2: ridimensiona/comprimi per il salvataggio, partendo dal ritaglio se disponibile, altrimenti dalla foto intera
-      const source = cropped || img;
-      const srcW = cropped ? cropped.width : img.width;
-      const srcH = cropped ? cropped.height : img.height;
-      const maxDim = 1400;
-      let w = srcW, h = srcH;
-      if(w > h && w > maxDim){ h = h*maxDim/w; w = maxDim; }
-      else if(h > maxDim){ w = w*maxDim/h; h = maxDim; }
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(source, 0, 0, w, h);
-      canvas.toBlob((blob)=>{
-        state.currentPhotoBlob = blob;
-        const preview = document.getElementById('photo-preview');
-        preview.src = URL.createObjectURL(blob);
-        preview.style.display = 'block';
-        document.getElementById('photo-actions').style.display = 'flex';
-        statusEl.style.display = 'none';
-        toast(cropped ? '📄 Documento rilevato e ritagliato' : 'Foto aggiunta ✓');
-      }, 'image/jpeg', 0.78);
-    };
-    img.src = ev.target.result;
-  };
-  reader.readAsDataURL(file);
+  processImageToBlob(file).then(({blob, cropped})=>{
+    state.currentPhotoBlob = blob;
+    const preview = document.getElementById('photo-preview');
+    document.getElementById('pdf-preview').style.display = 'none';
+    preview.src = URL.createObjectURL(blob);
+    preview.style.display = 'block';
+    document.getElementById('photo-actions').style.display = 'flex';
+    statusEl.style.display = 'none';
+    toast(cropped ? '📄 Documento rilevato e ritagliato' : 'Foto aggiunta ✓');
+  });
 }
 
 document.getElementById('f-photo-camera').addEventListener('change', (e)=>{ handlePhotoFile(e.target.files[0]); });
@@ -889,7 +937,10 @@ document.getElementById('f-photo-gallery').addEventListener('change', (e)=>{ han
 document.getElementById('btn-photo-remove').addEventListener('click', (e)=>{
   e.stopPropagation();
   state.currentPhotoBlob = null;
+  state.currentAttachmentType = null;
+  state.currentAttachmentName = null;
   document.getElementById('photo-preview').style.display = 'none';
+  document.getElementById('pdf-preview').style.display = 'none';
   document.getElementById('photo-actions').style.display = 'none';
   document.getElementById('f-photo-camera').value = '';
   document.getElementById('f-photo-gallery').value = '';
@@ -907,13 +958,17 @@ document.getElementById('btn-save-expense').addEventListener('click', async ()=>
   const desc = document.getElementById('f-desc').value.trim() || (state.selectedCategory || 'Spesa');
   const id = 'e' + Date.now() + Math.random().toString(36).slice(2,7);
 
-  const entry = { id, date, amount: Math.round(amount*100)/100, desc, category: state.selectedCategory || null, photoFileId: null, deleted: false };
+  const entry = { id, date, amount: Math.round(amount*100)/100, desc, category: state.selectedCategory || null, photoFileId: null, attachmentType: null, deleted: false };
 
   const saveBtn = document.getElementById('btn-save-expense');
   saveBtn.disabled = true; saveBtn.textContent = 'Salvataggio...';
   try{
     if(state.currentPhotoBlob){
-      entry.photoFileId = await driveUploadPhoto(id + '.jpg', state.photosFolderId, state.currentPhotoBlob);
+      const isPdf = state.currentAttachmentType === 'pdf';
+      const fname = isPdf ? (id + '.pdf') : (id + '.jpg');
+      const mime = isPdf ? 'application/pdf' : 'image/jpeg';
+      entry.photoFileId = await driveUploadFile(fname, state.photosFolderId, state.currentPhotoBlob, mime);
+      entry.attachmentType = state.currentAttachmentType || 'image';
     }
     state.expenses.unshift(entry);
     await saveIndex();
@@ -959,7 +1014,7 @@ function renderExpenseList(){
           <div class="exp-desc" style="${e.deleted ? 'text-decoration:line-through;' : ''}">${escapeHtml(e.desc)}</div>
           <div class="exp-meta">${e.deleted ? '<span class="cat" style="background:#e3e3e3; color:#666;">Eliminata</span>' : ''}${e.category ? '<span class="cat">'+escapeHtml(e.category)+'</span>' : ''}</div>
         </div>
-        <div class="exp-amount">${fmtEUR(e.amount)}${e.photoFileId ? '<span class="exp-camera">📷</span>' : ''}</div>
+        <div class="exp-amount">${fmtEUR(e.amount)}${e.photoFileId ? '<span class="exp-camera">'+(e.attachmentType === 'pdf' ? '📄' : '📷')+'</span>' : ''}</div>
       </div>`;
     });
     html += '</div>';
@@ -975,21 +1030,48 @@ async function openExpenseDetail(id){
   const actionBtn = entry.deleted
     ? '<button class="btn secondary" id="btn-restore-expense">↺ Ripristina spesa</button>'
     : '<button class="btn secondary" id="btn-delete-expense">Elimina spesa</button>';
+
+  const attachSection = (!entry.photoFileId && !entry.deleted) ? `
+    <div class="helptext" style="margin-bottom:6px;">Nessun giustificativo allegato — te lo sei dimenticato in fase di inserimento?</div>
+    <div class="photo-choice-row" style="margin-bottom:10px;">
+      <div class="photo-picker" id="btn-attach-camera" style="padding:12px 8px;"><span class="cam-icon" style="font-size:26px; margin-bottom:4px;">📷</span>Scatta foto</div>
+      <div class="photo-picker" id="btn-attach-gallery" style="padding:12px 8px;"><span class="cam-icon" style="font-size:26px; margin-bottom:4px;">🖼️</span>Galleria / PDF</div>
+    </div>
+    <div class="helptext" id="attach-status" style="display:none; text-align:center; margin-bottom:10px;"></div>
+  ` : '';
+
   document.getElementById('modal-content').innerHTML = `
     <h2 style="font-family:var(--font-display); font-style:italic; margin-top:0;">${escapeHtml(entry.desc)}</h2>
     <div style="font-family:var(--font-mono); font-size:15px; color:var(--ink-soft); margin-bottom:10px;">
       ${fmtDateIt(entry.date)} ${entry.category ? '· '+escapeHtml(entry.category) : ''} ${entry.deleted ? '· <b style="color:var(--stamp);">eliminata</b>' : ''}
     </div>
     <div style="font-family:var(--font-mono); font-size:30px; font-weight:700; margin-bottom:14px;">${fmtEUR(entry.amount)}</div>
-    <div id="modal-photo-wrap">${entry.photoFileId ? '<div class="helptext">Caricamento foto...</div>' : ''}</div>
+    <div id="modal-photo-wrap">${entry.photoFileId ? '<div class="helptext">Caricamento allegato...</div>' : ''}</div>
+    ${attachSection}
     ${actionBtn}
   `;
   document.getElementById('modal-overlay').classList.add('show');
+
   if(entry.photoFileId){
-    driveGetPhotoDataUrl(entry.photoFileId).then(dataUrl=>{
-      document.getElementById('modal-photo-wrap').innerHTML = `<img src="${dataUrl}" class="photo-preview">`;
-    }).catch(()=>{ document.getElementById('modal-photo-wrap').innerHTML = '<div class="helptext">Impossibile caricare la foto.</div>'; });
+    if(entry.attachmentType === 'pdf'){
+      driveGetPhotoDataUrl(entry.photoFileId).then(dataUrl=>{
+        document.getElementById('modal-photo-wrap').innerHTML = `
+          <embed src="${dataUrl}" type="application/pdf" style="width:100%; height:340px; border:1px solid var(--rule); margin-top:6px;">
+          <a class="link" href="${dataUrl}" download="${escapeHtml(entry.desc)}.pdf" style="display:block; margin-top:8px; text-align:center;">⬇ Scarica il PDF</a>
+        `;
+      }).catch(()=>{ document.getElementById('modal-photo-wrap').innerHTML = '<div class="helptext">Impossibile caricare il PDF.</div>'; });
+    } else {
+      driveGetPhotoDataUrl(entry.photoFileId).then(dataUrl=>{
+        document.getElementById('modal-photo-wrap').innerHTML = `<img src="${dataUrl}" class="photo-preview">`;
+      }).catch(()=>{ document.getElementById('modal-photo-wrap').innerHTML = '<div class="helptext">Impossibile caricare la foto.</div>'; });
+    }
   }
+
+  const attachCameraBtn = document.getElementById('btn-attach-camera');
+  const attachGalleryBtn = document.getElementById('btn-attach-gallery');
+  if(attachCameraBtn) attachCameraBtn.addEventListener('click', ()=>{ state.attachTargetId = id; document.getElementById('f-attach-camera').click(); });
+  if(attachGalleryBtn) attachGalleryBtn.addEventListener('click', ()=>{ state.attachTargetId = id; document.getElementById('f-attach-gallery').click(); });
+
   const delBtn = document.getElementById('btn-delete-expense');
   if(delBtn){
     delBtn.addEventListener('click', async ()=>{
@@ -1016,6 +1098,39 @@ async function openExpenseDetail(id){
   }
 }
 document.getElementById('modal-overlay').addEventListener('click', (e)=>{ if(e.target.id === 'modal-overlay') e.target.classList.remove('show'); });
+
+async function attachFileToExpense(file){
+  if(!file || !state.attachTargetId) return;
+  const entry = state.expenses.find(e=>e.id===state.attachTargetId);
+  if(!entry) return;
+  const statusEl = document.getElementById('attach-status');
+  if(statusEl){ statusEl.style.display = 'block'; statusEl.textContent = 'Caricamento in corso...'; }
+
+  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+  try{
+    let blob, attachmentType, ext, mime, croppedFlag = false;
+    if(isPdf){
+      blob = file; attachmentType = 'pdf'; ext = '.pdf'; mime = 'application/pdf';
+    } else {
+      if(statusEl) statusEl.textContent = '🔍 Analisi del documento...';
+      const res = await processImageToBlob(file);
+      blob = res.blob; croppedFlag = res.cropped;
+      attachmentType = 'image'; ext = '.jpg'; mime = 'image/jpeg';
+    }
+    entry.photoFileId = await driveUploadFile(entry.id + ext, state.photosFolderId, blob, mime);
+    entry.attachmentType = attachmentType;
+    await saveIndex();
+    renderExpenseList();
+    toast(croppedFlag ? '📄 Documento rilevato, ritagliato e allegato' : 'Giustificativo allegato ✓');
+    openExpenseDetail(entry.id); // ricarica il dettaglio per mostrare subito l'allegato appena aggiunto
+  }catch(err){
+    toast('Errore durante il caricamento, riprova');
+    if(statusEl) statusEl.style.display = 'none';
+  }
+}
+document.getElementById('f-attach-camera').addEventListener('change', (e)=>{ attachFileToExpense(e.target.files[0]); e.target.value=''; });
+document.getElementById('f-attach-gallery').addEventListener('change', (e)=>{ attachFileToExpense(e.target.files[0]); e.target.value=''; });
+
 
 // ---------- Report ----------
 document.querySelectorAll('.period-pills button').forEach(btn=>{
@@ -1232,11 +1347,13 @@ document.getElementById('btn-receipts-pdf').addEventListener('click', async ()=>
     }
 
     const withoutPhoto = [];
+    const pdfAttachments = [];
     let done = 0;
     for(const e of items){
       done++;
       progress.textContent = `Preparazione allegato ${done} di ${items.length}...`;
       if(!e.photoFileId){ withoutPhoto.push(e); continue; }
+      if(e.attachmentType === 'pdf'){ pdfAttachments.push(e); continue; }
       let dataUrl;
       try{
         dataUrl = await driveGetPhotoDataUrl(e.photoFileId);
@@ -1286,6 +1403,23 @@ document.getElementById('btn-receipts-pdf').addEventListener('click', async ()=>
 
         gridIndex++;
       }
+    }
+
+    if(pdfAttachments.length){
+      doc.addPage();
+      doc.setFont('times','italic'); doc.setFontSize(14);
+      doc.text('Spese con giustificativo in formato PDF', margin, 18);
+      doc.setFont('helvetica','normal'); doc.setFontSize(8);
+      doc.text('Questi allegati sono file PDF (es. fatture) e non vengono uniti automaticamente in questo documento.', margin, 24);
+      doc.text('Sono disponibili singolarmente nella cartella "foto" del profilo, su Google Drive.', margin, 28);
+      doc.autoTable({
+        startY: 33,
+        head:[['Data','Descrizione','Categoria','Importo']],
+        body: pdfAttachments.map(e=>[fmtDateIt(e.date), e.desc, e.category||'—', fmtEUR(e.amount)]),
+        styles:{fontSize:9},
+        headStyles:{fillColor:[32,38,31]},
+        columnStyles:{3:{halign:'right'}}
+      });
     }
 
     if(withoutPhoto.length){
